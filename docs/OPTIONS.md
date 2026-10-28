@@ -72,6 +72,7 @@ free camera keeps them either way.
 | Option | |
 |---|---|
 | Skip the opening | Straight to the title screen. |
+| HD movies | The cutscenes play from upscaled 1080p files in `textures\SCUS-97490\movies` (or the folder `RG_HD_MOVIES` names), with the game's own sound and timing; a movie without a file, or one the PC cannot decode in time, plays as the game has it. On by default only when the folder holds files (the option's help says how many of the 89 it found). [HD-MOVIES.md](HD-MOVIES.md) |
 | Show the loading recap at once | The story so far appears whole, and you can go on as soon as it has loaded. |
 | Instant text | Dialogue a page at a time instead of letter by letter. |
 | Chests on the map | Unopened chests show on the map in the parts explored. |
@@ -128,7 +129,8 @@ the main menu): L1 and R1 turn the page.
 - Each option also has an environment variable, for testing:
   [DEVELOPMENT.md](DEVELOPMENT.md). For fast-forward: `RG_FAST_FORWARD_SPEED`
   and `RG_FAST_FORWARD_TRIGGERS`; for text and prompts: `RG_BUTTON_PROMPTS`,
-  `RG_FONT_STYLE`, `RG_FONT`, `RG_TEXTURE_REPLACEMENTS`; `RG_WIDESCREEN_MENUS`.
+  `RG_FONT_STYLE`, `RG_FONT`, `RG_TEXTURE_REPLACEMENTS`; `RG_WIDESCREEN_MENUS`;
+  for HD movies: `RG_HD_MOVIES`.
 - ReShade and RenderDoc: set `RG_ALLOW_VK_LAYERS=1` in Windows before
   starting the game ([GRAPHICS-UPSCALING.md](GRAPHICS-UPSCALING.md#reshade-and-renderdoc)).
 - Texture packs go in `textures\SCUS-97490\replacements`:

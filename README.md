@@ -20,6 +20,9 @@ disc image; nothing of the game is distributed.
   sharp modern font (menu and battle numbers included), and texture packs
   ([FONT-AND-PROMPTS.md](docs/FONT-AND-PROMPTS.md)), including 4x HD
   textures built from your disc ([TEXTURE-PACKS.md](docs/TEXTURE-PACKS.md))
+- HD cutscenes: the 89 movies play from 1080p upscales you build from your
+  disc, with the game's own sound and timing, and fall back to the original
+  movie wherever there is no file ([HD-MOVIES.md](docs/HD-MOVIES.md))
 - Game options: camera, field of view, draw distance, instant text,
   encounter rate, experience, money, item drops, shop prices and more
   ([all of them](docs/OPTIONS.md))
@@ -76,6 +79,8 @@ See [docs/OPTIONS.md](docs/OPTIONS.md) for each one.
   modern font, texture replacement packs
 - [docs/TEXTURE-PACKS.md](docs/TEXTURE-PACKS.md): HD texture packs: building,
   installing, tuning, learn mode
+- [docs/HD-MOVIES.md](docs/HD-MOVIES.md): HD cutscenes: the folder, the file
+  layout, how they play and fall back
 - [docs/BUILDING.md](docs/BUILDING.md): building by hand, and the project's layout
 - [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md): the debug launchers, profiling and
   the environment variables

@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- HD movies: the cutscenes can play from upscaled 1080p files (HEVC in
+  Matroska, one per movie, built from your disc: docs/HD-MOVIES.md). The game
+  keeps playing its own movie, with its sound, clock, subtitles, pause and
+  skip; only the picture it draws is swapped for the file's frame of the same
+  number, at the right 16:9 / 4:3 shape (Widescreen included). A missing,
+  unreadable or too slow file falls back to the original picture, mid-movie
+  too. Game > Convenience > "HD movies" (and the game's Settings screen),
+  `hd_movies` in settings.ini, on by default only when the folder holds
+  files; `RG_HD_MOVIES=dir|0` for a run.
+
 - HD texture packs: the pack builder now picks the upscale model per class by
   default: animevideov3 for effects (glows and sparks were greener, bigger and
   starrier), foliage and clouds, and the general x4plus model for Salgin's
