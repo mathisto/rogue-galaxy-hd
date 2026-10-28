@@ -24,7 +24,9 @@ class PS2Runtime;
 // camera, the compass and the movies take the shape shown (setAspect) for
 // the 9/16 of the mode and the patch, so the picture fills the window. The
 // HUD's 3/4 is the mode's own, right at 16:9. 2D menus and text are drawn
-// for 4:3 and come out stretched; the screens before the game, which have
+// for 4:3: the full-screen menus are shown 4:3 between bars (unless the
+// player picks Stretched), the text over the field comes out stretched; the
+// screens before the game, which have
 // nothing else (the title overlay's: opening, title, load menu, and the
 // loading screen's recap), stay 4:3, and the game draws for 4:3 there.
 //
@@ -36,6 +38,13 @@ namespace rg::widescreen
 void install(PS2Runtime &runtime);
 
 void setEnabled(bool enable);
+
+// Full-screen menus (main menu with items, equipment, status, Settings;
+// transporter, factory, insect and space menus: the game's modes 14, 16, 17,
+// 19, 20) drawn for 4:3 and shown at 4:3 with the Sides fill around them,
+// instead of stretched (the menu's "Widescreen menus", on by default;
+// RG_WIDESCREEN_MENUS=stretched|pillarboxed for a run).
+void setMenusPillarboxed(bool pillarboxed);
 
 // The option is on and the game is past the screens before it: the frame
 // is drawn wide.

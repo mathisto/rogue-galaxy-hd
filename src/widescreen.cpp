@@ -59,6 +59,31 @@ PS2Runtime::RecompiledFunction g_viewSetAspect = nullptr;
 PS2Runtime::RecompiledFunction g_viewSetPerspective = nullptr;
 PS2Runtime::RecompiledFunction g_gsPktSetXyzPixel = nullptr;
 std::atomic<bool> g_enabled{false};
+// Full-screen menus at 4:3 between bars (the menu's "Widescreen menus").
+std::atomic<bool> g_menusPillarboxed{true};
+const uint8_t *g_rdram = nullptr;
+// GetGameMode (u32 0x4B51A0; docs/sixty-fps-logic.md 1.3): the modes that are
+// a full-screen 2D menu, drawn for 4:3 over nothing the wide view adds: 14
+// InsectMenu, 16 Factory, 17 MainMenu (items, equipment, status, strategy,
+// Revelation Flow, Settings, help), 19 SpaceMenu, 20 TransporterMenu (save,
+// teleport, item storage).
+constexpr uint32_t kGameMode = 0x004B51A0u;
+bool menuMode()
+{
+    if (!g_rdram)
+    {
+        return false;
+    }
+    uint32_t mode = 0u;
+    std::memcpy(&mode, g_rdram + kGameMode, sizeof(mode));
+    const bool menu = mode == 14u || mode == 16u || mode == 17u || mode == 19u || mode == 20u;
+    static std::atomic<bool> s_was{false};
+    if (s_was.exchange(menu) != menu)
+    {
+        std::fprintf(stderr, "[rg] widescreen: %s (game mode %u)\n", menu ? "a menu, shown 4:3" : "wide again", mode);
+    }
+    return menu;
+}
 // The picture's width over its height, from the presenting thread.
 std::atomic<float> g_aspect{16.0f / 9.0f};
 
@@ -165,6 +190,11 @@ void gsPktSetXyzPixel(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
 
 void install(PS2Runtime &runtime)
 {
+    g_rdram = runtime.memory().getRDRAM();
+    if (const char *menus = std::getenv("RG_WIDESCREEN_MENUS"); menus && *menus)
+    {
+        setMenusPillarboxed(*menus != '0' && std::strcmp(menus, "stretched") != 0);
+    }
     const char *wide = std::getenv("RG_WIDESCREEN");
     if (wide && *wide && *wide != '0')
     {
@@ -185,7 +215,13 @@ void install(PS2Runtime &runtime)
 bool wide()
 {
     return g_enabled.load(std::memory_order_relaxed) && !rg::loading::active() &&
-           std::strcmp(rg::overlay::residentName(), "title") != 0;
+           std::strcmp(rg::overlay::residentName(), "title") != 0 &&
+           !(g_menusPillarboxed.load(std::memory_order_relaxed) && menuMode());
+}
+
+void setMenusPillarboxed(bool pillarboxed)
+{
+    g_menusPillarboxed.store(pillarboxed, std::memory_order_relaxed);
 }
 
 void setEnabled(bool enable)

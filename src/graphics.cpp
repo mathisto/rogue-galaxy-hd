@@ -169,6 +169,8 @@ void applyGameNumber(const std::string &key, int value)
         rg::shopprices::setPercent(value);
     else if (key == "action_gauge")
         rg::battlerates::setActionGauge(value);
+    else if (key == "widescreen_menus" && !std::getenv("RG_WIDESCREEN_MENUS"))
+        rg::widescreen::setMenusPillarboxed(value == 1);
 #if defined(RG_HAS_SDLGPU)
     else if (key == "button_prompts")
         rg::hdtext::setPrompts(value);
@@ -536,8 +538,13 @@ std::unique_ptr<dq8::ui::Overlay> createMenu(PS2Runtime &runtime, dq8::gfx::SdlG
         {"widescreen", "Widescreen",
          "The game draws a wider view, and the HUD over the scene and the movies fit it; with Display > Aspect "
          "ratio on Auto the picture fills the window, whatever its shape, once a game is loaded. Menus and text "
-         "are drawn for 4:3 and come out stretched.",
+         "are drawn for 4:3: see Widescreen menus.",
          false},
+        {"widescreen_menus", "Widescreen menus",
+         "With Widescreen on, the full-screen menus (the main menu with items, equipment, status and Settings; "
+         "save and transporter menus; factory, insect and ship menus), which the game draws for 4:3, are shown at "
+         "4:3 with Display > Borders around them. Stretched shows them as wide as the window, as before.",
+         false, 0, 1, 1, "", 1, true, false, {"Stretched", "4:3 pillarboxed"}},
         {"field_of_view", "Field of view",
          "How wide the camera sees while exploring and in battle, in degrees across a 4:3 picture (the game's is "
          "52); a wide picture adds to it. Scenes keep their own camera.",
@@ -603,11 +610,12 @@ std::unique_ptr<dq8::ui::Overlay> createMenu(PS2Runtime &runtime, dq8::gfx::SdlG
         {"button_prompts", "Button prompts",
          "Which buttons the game's text shows. Xbox goes by position: Cross is A, Circle B, Square X, Triangle Y, "
          "L1 and R1 LB and RB, L2 and R2 LT and RT. Auto shows PlayStation buttons for a PlayStation controller and "
-         "Xbox ones otherwise. Pictures with buttons drawn in, such as the help pages, keep the PlayStation ones.",
+         "Xbox ones otherwise. Buttons painted into pictures (help pages, the loading screen) follow too.",
          false, 0, 2, 2, "", 1, true, false, {"PlayStation", "Xbox", "Auto"}},
         {"font_style", "Font",
          "Modern draws the text in Roboto, or in the first .ttf or .otf in the fonts folder, sharp at the internal "
-         "resolution, and lines wrap to its letter widths. Text already on screen changes at its next page.",
+         "resolution, and lines wrap to its letter widths; the menus' numbers and the compass letters too. Text "
+         "already on screen changes at its next page.",
          false, 0, 1, 0, "", 1, true, false, {"Original", "Modern"}},
         {"texture_replacements", "Texture replacements",
          "Off shows every texture as the game has it: no Xbox buttons, no modern font, and no texture pack from "
