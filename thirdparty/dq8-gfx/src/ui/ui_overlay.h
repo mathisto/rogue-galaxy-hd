@@ -57,6 +57,10 @@ struct GameOption {
     // Takes effect at the next start: once it differs from what this run
     // started with, the menu says so in red.
     bool restart = false;
+    // A number that picks one of these, shown as buttons side by side
+    // instead of a slider: the value is minimum + the index (Rogue Galaxy:
+    // added).
+    std::vector<std::string> choices = {};
     bool number() const { return maximum > minimum; }
 };
 

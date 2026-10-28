@@ -438,6 +438,22 @@ void Overlay::drawGamePage() {
         if (!table)
             continue;
         settingRow(option.label.c_str(), option.help.empty() ? nullptr : option.help.c_str());
+        if (option.number() && !option.choices.empty()) {
+            // Named choices side by side (Rogue Galaxy: added).
+            std::vector<const char *> labels;
+            for (const std::string &choice : option.choices)
+                labels.push_back(choice.c_str());
+            int index = std::clamp(gameNumber(option) - option.minimum, 0, static_cast<int>(labels.size()) - 1);
+            if (segmented(option.key.c_str(), &index, labels.data(), static_cast<int>(labels.size()))) {
+                const int next = std::clamp(option.minimum + index, option.minimum, option.maximum);
+                m_settings.gameNumbers[option.key] = next;
+                m_settings.gameOptions.erase(option.key);
+                if (m_host.setGameNumber)
+                    m_host.setGameNumber(option.key, next);
+                markDirty();
+            }
+            continue;
+        }
         if (option.number()) {
             const int value = gameNumber(option);
             int next = value;
