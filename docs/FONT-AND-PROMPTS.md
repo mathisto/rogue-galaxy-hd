@@ -40,17 +40,46 @@ gets the Xbox icons too, which match it by position, not by letter. The
 choice is checked about once a second, so plugging another controller in
 switches it.
 
-### What stays PlayStation
+With a texture pack, the pack's upscale of `gaiji2` (its icons PlayStation
+ones) is the canvas and the Xbox icons are drawn over it; before this the
+pack's file replaced the drawn sheet, so field prompts ("Use transporter")
+stayed PlayStation with a pack installed whatever the setting.
 
-Pictures with the buttons drawn into them, which the sheet swap cannot reach:
+Which set is showing, and why, is logged once per change and shown as a
+toast: `[font] Button prompts: Xbox (Auto: XInput Controller #1 is not a
+PlayStation controller)`.
 
-- the help pages' controller diagrams (System > Help, the `help_board`
-  pictures) and their "Press (X)" footer;
-- the loading screen's "Press (X)" after the story recap;
-- any other picture with a button painted in (the title screen's "Press the
-  START button" has no icon).
+### Pictures with buttons painted in
 
-These would need per-picture replacements in a texture pack (below).
+Pictures with the buttons drawn into them cannot be reached by the sheet
+swap. With Xbox prompts, an Xbox button is drawn over each PlayStation one
+found in them, in the same box, at the internal resolution (or over the
+pack's upscale of the picture): the loading recap's "Press (X)", the pause
+screen's "(#): Go back to title", the battle sheet's (#)/(^) and L1/L2
+pills, the item menu's and save screens' L1/R1, and the help boards' buttons
+(System > Help). Where they are is a table, `src/button_art_table.inc`,
+written by `tools/rg_psart_scan.py` (a template match of `gaiji2`'s own
+icons against the UI textures exported by `im3_export.py`; boxes only, no
+art). See [SESSION-NOTES-polish.md](SESSION-NOTES-polish.md) for what it
+covers and what stays: words such as "START button" and "SELECT", controller
+diagrams, the analog stick art, and icons in a style the match does not
+recognise stay as the game drew them.
+
+## Numerals
+
+The menus' numbers (play time, money, item counts, levels, HP and stats, the
+save screens' file numbers and levels) are not text but digit sprites cut
+from four menu sheets (`topmenu_02a`, `Itm_05`, `TP_save02`, `TP_top_02a`;
+research 11). With Font **Modern** their digit rows are redrawn in the same
+font, in the box each of the game's digits inked (so widths, centring and
+the colon stay the game's), with the game's outline colour and its fill's
+colours top to bottom, measured from the sheet; the money digits lean like
+the game's italic ones. Over a pack's upscale of the sheet when there is
+one, so the rest of the sheet stays HD. Battle damage numbers and the
+battle HUD's HP digits (`btl_st01/02`, `frame`) stay the game's.
+
+The field compass's letters (N E S W, `rc/compass.chr` "moji", which no
+pack holds) are redrawn the same way with Font Modern.
 
 ## Font
 
@@ -116,7 +145,9 @@ textures\SCUS-97490\replacements\     (in the working directory; sub-folders all
 - A picture is 1x to 8x the texture's size, RGBA, alpha 255 opaque (converted
   to the GS's 0x80). A picture of the top-left WxH part of a larger texture
   is allowed (the game's 512x416 font pages live in 512x512 textures).
-- A file wins over a drawn picture (the prompts, the font).
+- The prompts, the font, the numerals and the painted-in buttons are drawn
+  over a file for the same texture (the file is their canvas); with Font
+  Original and PlayStation prompts the file shows as it is.
 - Read in the background on first use; F8 reads the folder again. Memory,
   mipmaps, learn mode and a pack of the whole game:
   [TEXTURE-PACKS.md](TEXTURE-PACKS.md).

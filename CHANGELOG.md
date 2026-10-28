@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+- Modern font now covers the menus' numbers too (play time, money, item
+  counts, levels, stats, the save screens' file numbers) and the compass's
+  N E S W, in the game's own colours and outline.
+- Xbox prompts reach the pictures with PlayStation buttons painted in: the
+  help pages, the loading recap's Press (X), the pause screen, the battle
+  and menu sheets' L1/R1/L2 pills (114 buttons in 45 pictures). With an HD
+  texture pack installed the field prompts ("Use transporter") and the
+  modern font had stayed the pack's PlayStation/original art; fixed. A toast
+  says which prompt set Auto picked and why.
+- HD texture packs: the field compass and other HUD textures the game
+  builds in off-screen memory now take their HD pictures; the minimap's AI
+  upscale no longer spills grey blotches over the map (hard cut-out edges).
+- Display > Scaling filter: Supersample, a Lanczos average of every
+  rendered pixel for 4x to 8x internal resolution.
+- Widescreen: full-screen menus are shown at 4:3 with the Borders fill
+  beside them (Game > Widescreen menus: 4:3 pillarboxed, the default, or
+  Stretched).
+- ReShade and RenderDoc can be let in with `RG_ALLOW_VK_LAYERS=1`
+  (colour shaders only for ReShade); captures carry pass labels.
+
 - Fast-forward from the controller: R2 held runs the game faster while
   held, L2 switches fast-forward on and off; on the keyboard, ` (left of 1)
   held, and F4 as before. The game no longer gets L2 and R2 while they do

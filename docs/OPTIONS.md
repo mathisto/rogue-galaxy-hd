@@ -5,8 +5,10 @@
 **F1** (or the Guide button, or Back+Start) opens the menu:
 
 - **Display**: window or fullscreen, vertical sync, internal resolution,
-  aspect ratio, scaling filter (Sharp, Smooth, Nearest, or **FSR**, AMD's
-  edge-aware upscaling for a window larger than the internal resolution),
+  aspect ratio, scaling filter (Sharp, Smooth, Nearest, **FSR**, AMD's
+  edge-aware upscaling for a window larger than the internal resolution, or
+  **Supersample**, a Lanczos average of every rendered pixel for an internal
+  resolution larger than the window, 4x to 8x),
   **Sharpening** (AMD FSR 1's, off by default; see
   [GRAPHICS-UPSCALING.md](GRAPHICS-UPSCALING.md)), and **Borders**, what fills the sides of a
   4:3 picture (black, the picture blurred, or your own image from the
@@ -51,7 +53,8 @@ free camera keeps them either way.
 | Option | |
 |---|---|
 | 60 frames per second | On by default; off, the game's own 30. From the next start. |
-| Widescreen | A wider view that fills the window, from 4:3 to 32:9. Menus and text come out stretched. |
+| Widescreen | A wider view that fills the window, from 4:3 to 32:9. Text over the field comes out stretched. |
+| Widescreen menus | 4:3 pillarboxed (default): the full-screen menus (main menu, items, equipment, status, Settings, save and transporter menus, factory, insect and ship menus) are shown at 4:3 with Display > Borders beside them. Stretched: as wide as the window, as before. |
 | Field of view | 40 to 90 degrees (the game's is 52). |
 | Camera distance | 70% to 160% of the game's. |
 | Faster camera rotation | The camera turns twice as fast. |
@@ -84,8 +87,8 @@ free camera keeps them either way.
 
 | Option | |
 |---|---|
-| Button prompts | PlayStation, Xbox (A, B, X, Y, LB, RB, LT, RT, by position: Cross is A), or Auto (the default: PlayStation buttons for a PlayStation controller, Xbox ones otherwise). Pictures with buttons drawn in, such as the help pages, keep the PlayStation ones. |
-| Font | Original, or Modern: Roboto, or your own .ttf in the `fonts` folder, drawn sharp at the internal resolution; lines rewrap to its letter widths. |
+| Button prompts | PlayStation, Xbox (A, B, X, Y, LB, RB, LT, RT, by position: Cross is A), or Auto (the default: PlayStation buttons for a PlayStation controller, Xbox ones otherwise; a toast says which and why). Buttons painted into pictures (help pages, the loading screen, battle and menu sheets) follow too. |
+| Font | Original, or Modern: Roboto, or your own .ttf in the `fonts` folder, drawn sharp at the internal resolution; lines rewrap to its letter widths. The menus' numbers (play time, money, counts, levels, stats) and the compass letters too. |
 | Texture replacements | On by default. Off shows every texture as the game has it: no Xbox buttons, no modern font, no texture pack. F8 reads the pack's folder again. |
 | Texture pack memory | 512 MB to 8 GB (default 2 GB): the video memory an HD texture pack may take; the least recently seen pictures give way ([TEXTURE-PACKS.md](TEXTURE-PACKS.md)). |
 
@@ -119,7 +122,9 @@ the main menu): L1 and R1 turn the page.
 - Each option also has an environment variable, for testing:
   [DEVELOPMENT.md](DEVELOPMENT.md). For fast-forward: `RG_FAST_FORWARD_SPEED`
   and `RG_FAST_FORWARD_TRIGGERS`; for text and prompts: `RG_BUTTON_PROMPTS`,
-  `RG_FONT_STYLE`, `RG_FONT`, `RG_TEXTURE_REPLACEMENTS`.
+  `RG_FONT_STYLE`, `RG_FONT`, `RG_TEXTURE_REPLACEMENTS`; `RG_WIDESCREEN_MENUS`.
+- ReShade and RenderDoc: set `RG_ALLOW_VK_LAYERS=1` in Windows before
+  starting the game ([GRAPHICS-UPSCALING.md](GRAPHICS-UPSCALING.md#reshade-and-renderdoc)).
 - Texture packs go in `textures\SCUS-97490\replacements`:
   [FONT-AND-PROMPTS.md](FONT-AND-PROMPTS.md#texture-replacements); building
   one from the AI-upscaled set, tuning and completing it:

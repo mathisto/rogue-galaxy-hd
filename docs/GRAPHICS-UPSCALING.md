@@ -8,8 +8,8 @@ The GS backend (`thirdparty/dq8-gfx`, SDL3 GPU on Vulkan here) draws every
 frame natively at the internal resolution (1x to 8x the PS2's 512x448).
 That is real supersampling: polygons, edges and alpha tests are rasterized
 at the higher resolution, not stretched afterwards. The presenter then fits
-that picture into the window with a blit (Sharp, Smooth or Nearest). Any
-upscaler would sit at that last step.
+that picture into the window with a blit (Sharp, Smooth or Nearest), or the
+FSR or Supersample passes below. Any upscaler would sit at that last step.
 
 ## DLSS: not practical
 
@@ -71,6 +71,54 @@ picture lands where it did, FSR removes the stair steps of the 3x
 enlargement, sharpening crisps edges without visible halos. Not yet looked
 at: a 3D field scene, widescreen, the Blurred and Image borders with FSR on,
 and the cost on a slow GPU (two extra full-window passes).
+
+## Supersample: a proper downscale (2026-10-28)
+
+At 4x to 8x internal resolution the picture is larger than the window, and
+Smooth's bilinear blit reads only the 2x2 texels nearest each pixel's
+centre: most of what was rendered is skipped, so thin lines and texture
+detail shimmer. **Scaling filter: Supersample** resizes it with a Lanczos-2
+kernel stretched over each window pixel's whole footprint, in two passes
+(across, then down; `shaders/present_downscale.frag`,
+`SdlGpuDevice::drawDownscale`), into the same texture FSR uses, so
+Sharpening still applies after it. When the window is the larger it falls
+back to bilinear. Settings file `filter = supersample`, `RG_UI_SCRIPT`
+`filter supersample`. Not the default: next to Smooth the difference is real
+but small in still pictures (railings, signs and the menus' thin rules come
+out cleaner, with less stair-stepping; `research\assets\polish\04-downscale-*`),
+and it costs two passes reading up to 2 x 16 texels a pixel at 8x.
+
+## ReShade and RenderDoc
+
+Both launchers keep other programs' Vulkan layers out of the game
+(`VK_LOADER_LAYERS_DISABLE=~implicit~`), because overlays hooked into every
+Vulkan process (OBS, Steam, GOG, Epic) sat on its presents. To let them in:
+
+1. In Windows, set the user environment variable `RG_ALLOW_VK_LAYERS=1`
+   (Settings > System > About > Advanced system settings > Environment
+   Variables), then start `Rogue Galaxy.exe` as usual. Remove it to go back.
+   `debug\RogueGalaxy.bat` honours it too, and a `VK_LOADER_LAYERS_DISABLE`
+   you set yourself is no longer overwritten.
+2. **ReShade**: install it for `build\game\src\roguegalaxy.exe` with the
+   Vulkan API. Colour shaders work (LUTs, CAS/LumaSharpen, SMAA, FXAA, film
+   grain, colour grading, CRT); shaders that need depth (SSAO, MXAO, depth of
+   field, fog by depth) do not: this renderer never hands the game's depth to
+   the swapchain. All the other implicit layers come in with it too (the
+   Steam and Epic overlays included).
+3. **RenderDoc**: launch `build\game\src\roguegalaxy.exe` from RenderDoc
+   with the working directory set to the repository folder and
+   `disc\SCUS_974.90` as its argument. With the variable set the command
+   buffers carry labels: `GS draws: target <base> <width>x<height>` before
+   each of the GS's render passes, `Display: ...` for the composed frame, a
+   `Present` group holding the sides, the picture and the named
+   FSR/downscale/RCAS passes. `DQ8_GFX_DEBUG_LABELS=1` turns the labels on
+   alone.
+
+Checked (hidden runs, `VK_LOADER_DEBUG=layer`): with the variable the loader
+inserts the implicit layers (here NVIDIA's `VK_LAYER_NV_present` and
+`_optimus`) and the game reaches its title screen; without it they are
+"forced disabled". ReShade and RenderDoc themselves were not installed or
+tried (nothing is downloaded by this project).
 
 ## Licence of the FSR 1 derivation
 

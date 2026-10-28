@@ -15,7 +15,8 @@ either launcher), add a `set` line to the batch file (it has examples), or set
 them in the terminal before running it. Both launchers also set
 `VK_LOADER_LAYERS_DISABLE=~implicit~`, which keeps other programs' Vulkan
 layers (OBS's capture hook, ReShade, the Steam, GOG and Epic overlays) out
-of the game's process; set it yourself when running from a terminal.
+of the game's process, unless `RG_ALLOW_VK_LAYERS=1` is set; set it
+yourself when running from a terminal.
 The launchers in `debug\` are for diagnosis, not for playing.
 `debug\RogueGalaxy-profile.bat` runs the same game with the profiler ready:
 each F9 samples every thread for the next 20 seconds
@@ -93,6 +94,8 @@ thread contexts) and a thread's call chain read from the dump with
 | `RG_FORCE_ENCOUNTER=1` | A battle at the first steps wherever the field has enemies: the encounter countdown is cut before each tick (`src/debug/encounter.cpp`), and each battle's start is logged with its pad read; the battle bench (`walk.sh BATTLE=1`) sets it |
 | `RG_JUMP_TRACE=1` | Log the party leader's movement updates while off the ground (host time, position, step-scaled velocity, the motion's displacement, the action mode and the gravity flags, one line per `CharaMoveCollideMaybe`; `=2` logs the moves on the ground too, for the speed ramps; `=3` every character's, tagged with address and id, and for enemies every move with what drives it and every move request with its caller; `=4` every character's moves on the ground too, for a party following its leader): compares a jump's arc and timing between the 30 and 60 fps modes |
 | `RG_WIDESCREEN=1` | The game drawn for a wide screen of the window's shape (the menu's "Widescreen"; `src/widescreen.cpp`) |
+| `RG_WIDESCREEN_MENUS=pillarboxed\|stretched` | The full-screen menus (game modes 14, 16, 17, 19, 20) at 4:3 between bars, or stretched, for this run (the menu's "Widescreen menus"); each switch is logged as a `[rg] widescreen:` line |
+| `RG_ALLOW_VK_LAYERS=1` | The launchers let other programs' Vulkan layers in (ReShade, RenderDoc) instead of setting `VK_LOADER_LAYERS_DISABLE=~implicit~`; also turns on the GPU debug labels (`DQ8_GFX_DEBUG_LABELS=1` alone) |
 | `RG_SKIP_OPENING=1` | The logos at boot give way to the title screen (the menu's "Skip the opening") |
 | `RG_FIELD_OF_VIEW=N` | The camera's field of view in the field and in battle, degrees across a 4:3 picture (the menu's "Field of view"; the game's is 52) |
 | `RG_CAMERA_DISTANCE=N` | The camera's distance from the party, percent of the game's (the menu's "Camera distance") |
