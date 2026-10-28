@@ -12,7 +12,8 @@ disc image; nothing of the game is distributed.
 
 - 60 fps, or the original 30
 - Widescreen, up to 32:9, with the menus kept at 4:3
-- Up to 8x internal resolution, with FSR or a supersampled downscale
+- Up to 8x internal resolution (or Auto, from the window's height), with
+  FSR or a supersampled downscale
   ([GRAPHICS-UPSCALING.md](docs/GRAPHICS-UPSCALING.md); ReShade can be let in)
 - An in-game menu (F1) for graphics, sound and controls
 - Xbox button prompts (in the help pictures too), a sharp modern font (menu

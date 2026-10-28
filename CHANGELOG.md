@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Display > Internal resolution: Auto picks the scale from the window's
+  height in pixels (1080: 3x, 1440: 4x, 2160: 5x; oversampling 1.0 / 1.25 /
+  1.5, at most 6x by default) and follows the window as it changes.
+
 - Modern font now covers the menus' numbers too (play time, money, item
   counts, levels, stats, the save screens' file numbers) and the compass's
   N E S W, in the game's own colours and outline.

@@ -96,6 +96,31 @@ reaches the title; the launcher's own change was compiled with the final
 build but not run (it starts the player's exe). ReShade/RenderDoc not
 installed.
 
+## 6. Auto internal resolution (done, verified in hidden runs)
+
+`Overlay::updateAutoScale` (each frame): window height in pixels
+(`SDL_GetWindowSizeInPixels`), settled for 0.5 s, gives
+`ceil(h * oversample / 448)` clamped to [1, cap]; asked of the renderer
+live (`requestResolutionScale`, the same path as the menu's manual change,
+no restart). Settings: `scale = auto`, `manual_scale`, `auto_oversample`,
+`auto_cap`; `RG_GS_SCALE=auto` for a run (not saved). Verified: 5120x1440
+-> 4x (1792 lines), 1920x1080 -> 3x switched live from 2x, 2560x1440 at
+1.5 -> 5x; log `[ui] internal resolution Auto: 4x, 1792 lines for 1440`.
+Not verified: a real window resize, a monitor move, fullscreen toggle (the
+hidden window does not resize), the menu rows by eye.
+
+Frame rate at 5120x1440 widescreen, Salgin plaza, hidden window, 15 s
+windows of `[gfx]` lines (fps, backend = GS worker's share of the wall):
+3x 50.2 fps / 74% (min 34.5), 4x 52.9 fps / 69%, 5x 58.4 fps / 30%. These
+are not trustworthy: the player's game (5x, 1.7 GB) ran on the same GPU and
+CPU throughout, the hidden window composes off screen, and the numbers do
+not rise with the scale as they must. The battle measurement did not happen:
+the save stands in Salgin's town, where no battles start
+(`RG_FORCE_ENCOUNTER` needs enemies on the map). To repeat with the game
+closed: a hidden run with `DQ8_GFX_STATS_EVERY=60`, `key F9` marks around a
+15 s field window, then (from a save outside a town, `RG_FORCE_ENCOUNTER=1`)
+walk until `[encounter] battle starts` and mark a battle window.
+
 ## Test method
 
 Hidden runs (`DQ8_GFX_HIDDEN_WINDOW=2`) of `build\game-dev\rg-polish.exe`

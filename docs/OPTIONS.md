@@ -4,7 +4,13 @@
 
 **F1** (or the Guide button, or Back+Start) opens the menu:
 
-- **Display**: window or fullscreen, vertical sync, internal resolution,
+- **Display**: window or fullscreen, vertical sync, internal resolution
+  (1x to 8x, or **Auto**: the scale that gives at least the window's height
+  in lines, times an oversampling of 1.0, 1.25 or 1.5, capped at 2x-8x,
+  default 6x; 1080 lines take 3x, 1440 take 4x, 2160 take 5x; it follows
+  the window when resized, moved or made fullscreen, with a toast;
+  `RG_GS_SCALE=auto` for one run; a very wide window costs more at the same
+  height, so lower the cap on 32:9),
   aspect ratio, scaling filter (Sharp, Smooth, Nearest, **FSR**, AMD's
   edge-aware upscaling for a window larger than the internal resolution, or
   **Supersample**, a Lanczos average of every rendered pixel for an internal
