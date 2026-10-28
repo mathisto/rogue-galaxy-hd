@@ -4,6 +4,7 @@
 #include "gs_display.frag.spv.h"
 #include "gs_reinterpret.vert.spv.h"
 #include "present_easu.frag.spv.h"
+#include "present_downscale.frag.spv.h"
 #include "present_rcas.frag.spv.h"
 #include "present_sides.frag.spv.h"
 #ifdef DQ8_GFX_HAS_MSL
@@ -355,6 +356,25 @@ bool SdlGpuDevice::drawEasu(SDL_GPUCommandBuffer *commands, SDL_GPUTexture *targ
     const float uniforms[8] = {float(region[0]), float(region[1]), float(region[2]), float(region[3]),
                                float(width),     float(height),    0.0f,             0.0f};
     return runPresentPass(commands, m_easuPipeline, target, whole, false, source, m_sampler, uniforms, "easu", error);
+}
+
+bool SdlGpuDevice::drawDownscale(SDL_GPUCommandBuffer *commands, SDL_GPUTexture *target, uint32_t width,
+                                 uint32_t height, SDL_GPUTexture *source, const uint32_t (&region)[4], bool down,
+                                 std::string &error) {
+    if ((SDL_GetGPUShaderFormats(m_device) & SDL_GPU_SHADERFORMAT_SPIRV) == 0) {
+        error = "no SPIR-V shaders on this device";
+        return false;
+    }
+    if (!m_downscalePipeline)
+        m_downscalePipeline = createPresentPass(m_device, kPresentDownscaleFragSpirv,
+                                                SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM, "downscale", error);
+    if (!m_downscalePipeline)
+        return false;
+    const uint32_t whole[4] = {0u, 0u, width, height};
+    const float uniforms[8] = {float(region[0]), float(region[1]), float(region[2]), float(region[3]),
+                               float(width),     float(height),    down ? 1.0f : 0.0f, 0.0f};
+    return runPresentPass(commands, m_downscalePipeline, target, whole, false, source, m_sampler, uniforms,
+                          "downscale", error);
 }
 
 bool SdlGpuDevice::drawRcas(SDL_GPUCommandBuffer *commands, SDL_GPUTexture *target, SDL_GPUTextureFormat format,

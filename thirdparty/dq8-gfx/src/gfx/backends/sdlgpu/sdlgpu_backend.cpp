@@ -853,6 +853,9 @@ struct SdlGpuBackend::Impl {
     // The picture at its size on screen, for FSR's passes (Rogue Galaxy:
     // added), and whether a pass failed once (then the picture is blitted).
     ScratchTexture fsrTexture;
+    // The Lanczos downscale's first pass: the window's width, the picture's
+    // height (Rogue Galaxy: added).
+    ScratchTexture downscaleTexture;
     bool fsrFailed = false;
     // What fills the window beside the picture (Rogue Galaxy: added): the
     // picture halved down to a small copy for the blurred sides, and the
@@ -3272,8 +3275,10 @@ struct SdlGpuBackend::Impl {
         const bool enlarged = rect.width >= from.width && rect.height >= from.height &&
                               (rect.width > from.width || rect.height > from.height);
         const bool easu = displayOptions.filter == SdlGpuFilter::Fsr && enlarged;
-        if ((easu || displayOptions.sharpening != 0u) && !fsrFailed &&
-            drawWithFsr(commands, slot, target, rect, loadOp, easu))
+        const bool shrunk = rect.width < from.width || rect.height < from.height;
+        const bool lanczos = displayOptions.filter == SdlGpuFilter::Supersample && shrunk;
+        if ((easu || lanczos || displayOptions.sharpening != 0u) && !fsrFailed &&
+            drawWithFsr(commands, slot, target, rect, loadOp, easu, lanczos))
             return;
         blitPicture(commands, slot, target, rect, loadOp);
     }
@@ -3284,13 +3289,28 @@ struct SdlGpuBackend::Impl {
     // the target, when a pass could not be made (a device without SPIR-V);
     // the picture is then blitted from that frame on.
     bool drawWithFsr(SDL_GPUCommandBuffer *commands, const PresentationSlot &slot, SDL_GPUTexture *target,
-                     SdlGpuRect rect, SDL_GPULoadOp loadOp, bool easu) {
+                     SdlGpuRect rect, SDL_GPULoadOp loadOp, bool easu, bool lanczos = false) {
         if (rect.width == 0u || rect.height == 0u ||
             !ensureScratch(fsrTexture, rect.width, rect.height, SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM))
             return false;
         const SdlGpuRect at{0u, 0u, rect.width, rect.height};
         std::string error;
-        if (easu) {
+        if (lanczos) {
+            // Across into a picture of the window's width and the
+            // picture's height, then down into the window's size.
+            const SdlGpuRect from = pictureRegion(slot);
+            const uint32_t region[4] = {from.x, from.y, from.width, from.height};
+            const uint32_t across[4] = {0u, 0u, rect.width, from.height};
+            if (!ensureScratch(downscaleTexture, rect.width, from.height, SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM) ||
+                !device.drawDownscale(commands, downscaleTexture.texture, rect.width, from.height, slot.texture,
+                                      region, false, error) ||
+                !device.drawDownscale(commands, fsrTexture.texture, rect.width, rect.height,
+                                      downscaleTexture.texture, across, true, error)) {
+                std::fprintf(stderr, "[gfx] the Lanczos downscale is off: %s\n", error.c_str());
+                fsrFailed = true;
+                return false;
+            }
+        } else if (easu) {
             const SdlGpuRect from = pictureRegion(slot);
             const uint32_t region[4] = {from.x, from.y, from.width, from.height};
             if (!device.drawEasu(commands, fsrTexture.texture, rect.width, rect.height, slot.texture, region,
@@ -4204,7 +4224,7 @@ SdlGpuBackend::~SdlGpuBackend() {
             SDL_ReleaseGPUTransferBuffer(m_impl->device.handle(), m_impl->feedbackUpload);
         if (m_impl->presentUpload)
             SDL_ReleaseGPUTexture(m_impl->device.handle(), m_impl->presentUpload);
-        for (auto *scratch : {&m_impl->sharpTexture, &m_impl->fsrTexture, &m_impl->compositeTexture, &m_impl->captureTexture,
+        for (auto *scratch : {&m_impl->sharpTexture, &m_impl->fsrTexture, &m_impl->downscaleTexture, &m_impl->compositeTexture, &m_impl->captureTexture,
                               &m_impl->roundTrip.copy})
             m_impl->releaseScratch(*scratch);
         for (auto &level : m_impl->blurLevels)

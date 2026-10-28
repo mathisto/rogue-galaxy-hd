@@ -91,9 +91,10 @@ void Overlay::runStep(const ScriptStep &step, uint64_t frame) {
     static constexpr gfx::SdlGpuAspect kAspectValues[] = {gfx::SdlGpuAspect::Auto, gfx::SdlGpuAspect::Standard,
                                                           gfx::SdlGpuAspect::Wide, gfx::SdlGpuAspect::Native,
                                                           gfx::SdlGpuAspect::Stretch};
-    static constexpr const char *kFilters[] = {"sharp", "smooth", "nearest", "fsr"};
+    static constexpr const char *kFilters[] = {"sharp", "smooth", "nearest", "fsr", "supersample"};
     static constexpr gfx::SdlGpuFilter kFilterValues[] = {gfx::SdlGpuFilter::Sharp, gfx::SdlGpuFilter::Smooth,
-                                                          gfx::SdlGpuFilter::Nearest, gfx::SdlGpuFilter::Fsr};
+                                                          gfx::SdlGpuFilter::Nearest, gfx::SdlGpuFilter::Fsr,
+                                                          gfx::SdlGpuFilter::Supersample};
     static constexpr const char *kSides[] = {"black", "blurred", "image"};
     static constexpr gfx::SdlGpuSides kSidesValues[] = {gfx::SdlGpuSides::Black, gfx::SdlGpuSides::Blurred,
                                                         gfx::SdlGpuSides::Image};

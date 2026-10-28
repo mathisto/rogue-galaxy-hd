@@ -255,11 +255,14 @@ void Overlay::drawDisplayPage() {
             // Rogue Galaxy: added.
             "AMD FSR 1's edge-aware upscaling: smooth edges without blur when the window is larger than the "
             "internal resolution; smooth scaling when it is not. Raise the internal resolution first: it adds "
-            "real detail, which no upscaler can."};
+            "real detail, which no upscaler can.",
+            "For an internal resolution larger than the window (4x to 8x): every rendered pixel under each "
+            "screen pixel is averaged (Lanczos), so edges stay smooth and fine detail stops shimmering. Smooth "
+            "scaling when the window is the larger."};
         settingRow("Scaling filter", kFilterHelp[static_cast<int>(m_settings.display.filter)]);
-        static constexpr const char *kFilters[] = {"Sharp", "Smooth", "Nearest", "FSR"};
+        static constexpr const char *kFilters[] = {"Sharp", "Smooth", "Nearest", "FSR", "Supersample"};
         int filter = static_cast<int>(m_settings.display.filter);
-        if (segmented("filter", &filter, kFilters, 4)) {
+        if (segmented("filter", &filter, kFilters, 5)) {
             m_settings.display.filter = static_cast<gfx::SdlGpuFilter>(filter);
             m_backend.setDisplayOptions(m_settings.display);
             markDirty();

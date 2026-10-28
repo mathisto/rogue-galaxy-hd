@@ -25,6 +25,10 @@ enum class SdlGpuFilter : uint8_t {
     // AMD FSR 1's edge-adaptive upscale (EASU) when the picture is shown
     // larger than drawn; bilinear when not (Rogue Galaxy: added).
     Fsr,
+    // A Lanczos downscale over every texel under each pixel when the picture
+    // is drawn larger than shown (4x to 8x internal resolution); bilinear
+    // when it is enlarged (Rogue Galaxy: added).
+    Supersample,
 };
 
 // What fills the window beside a picture that does not reach its edges

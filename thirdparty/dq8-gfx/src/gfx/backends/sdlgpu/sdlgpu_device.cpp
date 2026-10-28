@@ -309,7 +309,7 @@ void SdlGpuDevice::destroy() {
     if (m_linearSampler)
         SDL_ReleaseGPUSampler(m_device, m_linearSampler);
     m_linearSampler = nullptr;
-    for (SDL_GPUGraphicsPipeline **pipeline : {&m_easuPipeline, &m_rcasPipeline}) {
+    for (SDL_GPUGraphicsPipeline **pipeline : {&m_easuPipeline, &m_rcasPipeline, &m_downscalePipeline}) {
         if (*pipeline)
             SDL_ReleaseGPUGraphicsPipeline(m_device, *pipeline);
         *pipeline = nullptr;
