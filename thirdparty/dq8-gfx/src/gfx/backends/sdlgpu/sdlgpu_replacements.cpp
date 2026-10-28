@@ -592,7 +592,7 @@ size_t GsReplacementStore::fileCount() const {
 }
 
 void GsReplacementStore::setBudgetMegabytes(uint32_t megabytes) {
-    const uint64_t bytes = static_cast<uint64_t>(std::clamp<uint32_t>(megabytes, 256u, 65536u)) << 20u;
+    const uint64_t bytes = static_cast<uint64_t>(std::clamp<uint32_t>(megabytes, 64u, 65536u)) << 20u;
     if (m_impl->budget.exchange(bytes) == bytes)
         return;
     std::lock_guard lock(m_impl->mutex);

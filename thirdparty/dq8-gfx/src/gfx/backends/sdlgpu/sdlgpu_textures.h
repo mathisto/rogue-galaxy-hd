@@ -211,6 +211,10 @@ private:
         uint64_t hdBytes = 0u;
         uint32_t hdLevels = 1u;
         uint64_t hdUse = 0u;
+        // When it was last drawn (microseconds), and, when the budget had no
+        // room for its picture, when to try again (0: not waiting).
+        int64_t hdUseTime = 0;
+        int64_t hdRetryAt = 0;
         // A picture the store is still reading (or one waiting for this
         // frame's upload allowance): the key it was asked for, the part it
         // covers, and the store's completions() count when it was asked.
@@ -286,7 +290,11 @@ private:
     void retryWait(const GsTextureKey &key, Entry &entry);
     // Drops the least recently used replacement textures until the pack's
     // budget holds them (never `keep`).
-    void enforceHdBudget(const Entry *keep);
+    // Makes room for `incoming` more bytes under the pack's budget; false
+    // when only pictures drawn in the last two seconds are left (the scene
+    // needs more than the budget: the new picture waits, rather than
+    // pictures in use being read and uploaded again every frame).
+    bool makeRoom(uint64_t incoming, const Entry *keep);
     // Learn mode: hands a texture with no replacement to the store.
     void learnTexture(const GsTextureKey &key, Entry &entry);
     // After update() rewrote `region` of the game's texture from m_staging:
@@ -346,6 +354,7 @@ private:
     // (bytes per 16 ms window) that spreads a scene's HD uploads over frames,
     // and the identities learn mode has handed over.
     uint64_t m_hdBytes = 0u;
+    uint64_t m_hdDenied = 0u;
     uint64_t m_hdTextures = 0u;
     // Whole-texture pictures on the GPU by key, shared by every entry that
     // shows them: the game uploads different textures into the same pages

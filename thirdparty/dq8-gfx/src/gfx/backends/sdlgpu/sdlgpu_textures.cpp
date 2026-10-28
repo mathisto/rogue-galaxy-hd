@@ -329,8 +329,12 @@ SDL_GPUTexture *GsTextureCache::acquire(const GSDrawState &state, std::string &e
         *scale = 1u;
     if (levels)
         *levels = 1u;
+    const int64_t nowUs = std::chrono::duration_cast<std::chrono::microseconds>(
+                              std::chrono::steady_clock::now().time_since_epoch())
+                              .count();
     const auto useHd = [&](Entry &entry) {
         entry.hdUse = ++m_useTick;
+        entry.hdUseTime = nowUs;
         if (scale)
             *scale = entry.hdScale;
         if (levels)
@@ -369,6 +373,10 @@ SDL_GPUTexture *GsTextureCache::acquire(const GSDrawState &state, std::string &e
             matchReplacement(key, entry);
         else if (entry.hdWait && GsReplacementStore::instance().completions() != entry.hdWaitSeen)
             retryWait(key, entry);
+        else if (entry.hdRetryAt != 0 && nowUs >= entry.hdRetryAt) {
+            entry.hdRetryAt = 0;
+            matchReplacement(key, entry);
+        }
         if (entry.hd)
             return useHd(entry);
         return entry.texture;
@@ -595,6 +603,18 @@ GsTextureCache::BindResult GsTextureCache::bindPicture(const GsTextureKey &key, 
     const uint32_t levels = whole ? 1u + static_cast<uint32_t>(image.mips.size()) : 1u;
     const uint64_t bytes = whole ? image.bytes() : hdWidth * hdHeight * 4u;
 
+    // No room under the budget: the game's texture for a few seconds more.
+    if (!makeRoom(bytes, &entry)) {
+        entry.hdRetryAt = std::chrono::duration_cast<std::chrono::microseconds>(
+                              std::chrono::steady_clock::now().time_since_epoch())
+                              .count() +
+                          5000000;
+        ++m_hdDenied;
+        if (GsReplacementStore::instance().logging())
+            std::fprintf(stderr, "[texrep] budget full: tbp0=%05x stays the game's for now\n", key.tbp0);
+        return BindResult::Failed;
+    }
+
     // A scene's first frame can ask for hundreds of pictures: spread their
     // uploads over frames (the game's texture is drawn until then).
     const int64_t now = std::chrono::duration_cast<std::chrono::microseconds>(
@@ -675,12 +695,14 @@ GsTextureCache::BindResult GsTextureCache::bindPicture(const GsTextureKey &key, 
         entry.hdBytes = bytes;
         entry.hdLevels = levels;
         entry.hdUse = ++m_useTick;
+        entry.hdUseTime = std::chrono::duration_cast<std::chrono::microseconds>(
+                              std::chrono::steady_clock::now().time_since_epoch())
+                              .count();
     }
     if (GsReplacementStore::instance().logging())
         std::fprintf(stderr, "[texrep] tbp0=%05x psm=%02x %ux%u: %s at %ux over %ux%u%s\n", key.tbp0, key.psm,
                      key.width, key.height, picture.label.c_str(), s, part.width(), part.height(),
                      levels > 1u ? " (mipmapped)" : "");
-    enforceHdBudget(&entry);
     GsReplacementStore::instance().noteGpu(m_hdBytes, m_hdTextures);
     return BindResult::Bound;
 }
@@ -701,6 +723,9 @@ void GsTextureCache::attachPooled(Entry &entry, PooledHd &pooled, const GsRegion
     entry.hdHash = texels;
     entry.hdBytes = 0u;
     entry.hdUse = ++m_useTick;
+        entry.hdUseTime = std::chrono::duration_cast<std::chrono::microseconds>(
+                              std::chrono::steady_clock::now().time_since_epoch())
+                              .count();
     ++pooled.refs;
     pooled.use = m_useTick;
 }
@@ -738,18 +763,25 @@ void GsTextureCache::flushPool() {
     releasePooled(0u);
 }
 
-void GsTextureCache::enforceHdBudget(const Entry *keep) {
+bool GsTextureCache::makeRoom(uint64_t incoming, const Entry *keep) {
     const uint64_t budget = GsReplacementStore::instance().budgetBytes();
-    if (m_hdBytes <= budget)
-        return;
-    const uint64_t target = budget - budget / 8u;
-    // Pictures nobody shows first, then the least recently drawn entries'.
+    if (incoming > budget)
+        return false;
+    if (m_hdBytes + incoming <= budget)
+        return true;
+    // Down to an eighth below the budget, so the next pictures fit too.
+    const uint64_t target = budget - std::min(budget, incoming + budget / 8u);
+    // Pictures nobody shows first, then those of entries not drawn for two
+    // seconds, least recently drawn first.
     releasePooled(target);
+    const int64_t now = std::chrono::duration_cast<std::chrono::microseconds>(
+                            std::chrono::steady_clock::now().time_since_epoch())
+                            .count();
     uint64_t dropped = 0u;
     if (m_hdBytes > target) {
         std::vector<Entry *> bound;
         for (auto &[key, entry] : m_entries)
-            if (entry.hd && &entry != keep && !(keep && keep->hdPooled && entry.hdPool == keep->hdPool))
+            if (entry.hd && &entry != keep && now - entry.hdUseTime > 2000000)
                 bound.push_back(&entry);
         std::sort(bound.begin(), bound.end(), [](const Entry *a, const Entry *b) { return a->hdUse < b->hdUse; });
         for (Entry *entry : bound) {
@@ -764,16 +796,23 @@ void GsTextureCache::enforceHdBudget(const Entry *keep) {
                 releasePooled(target);
         }
     }
-    if (GsReplacementStore::instance().logging())
+    if (dropped && GsReplacementStore::instance().logging())
         std::fprintf(stderr, "[texrep] budget: dropped %llu replacement texture(s), %.0f MB on the GPU\n",
                      static_cast<unsigned long long>(dropped), double(m_hdBytes) / 1048576.0);
+    GsReplacementStore::instance().noteGpu(m_hdBytes, m_hdTextures);
+    return m_hdBytes + incoming <= budget;
 }
 
 void GsTextureCache::learnTexture(const GsTextureKey &key, Entry &entry) {
     GsReplacementStore &store = GsReplacementStore::instance();
     // Not while the pack is off: everything would look unmatched.
-    if (!store.learning() || !store.enabled() || !store.filesEnabled() || entry.identity.texels == 0u || entry.renderable || entry.hd ||
+    if (!store.learning() || !store.enabled() || !store.filesEnabled() || entry.hdRetryAt != 0 ||
+        entry.identity.texels == 0u || entry.renderable || entry.hd ||
         !entry.unresolved.empty() || !entry.texture)
+        return;
+    // Direct-colour textures of 256x256 and more are the frame copied
+    // (bloom, the menu's backdrop, movies): a new one every frame.
+    if (!gsIsIndexedPsm(key.psm) && key.width >= 256u && key.height >= 256u)
         return;
     const uint64_t name = entry.identity.texels ^ (entry.identity.clut * 0x9e3779b97f4a7c15ull) ^
                           (static_cast<uint64_t>(key.width) << 40u) ^ (static_cast<uint64_t>(key.height) << 52u);
