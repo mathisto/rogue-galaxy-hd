@@ -210,6 +210,8 @@ void GsTextureCache::reset() {
             (void)key;
             if (entry.texture)
                 SDL_ReleaseGPUTexture(m_device.handle(), entry.texture);
+            if (entry.hd)
+                SDL_ReleaseGPUTexture(m_device.handle(), entry.hd);
         }
     }
     m_entries.clear();
@@ -304,8 +306,11 @@ GsTextureKey GsTextureCache::keyFor(const GSDrawState &state) {
     return key;
 }
 
-SDL_GPUTexture *GsTextureCache::acquire(const GSDrawState &state, std::string &error, const GsRegion *sampled) {
+SDL_GPUTexture *GsTextureCache::acquire(const GSDrawState &state, std::string &error, const GsRegion *sampled,
+                                        uint32_t *scale) {
     const GsTextureKey key = keyFor(state);
+    if (scale)
+        *scale = 1u;
 
     ++m_stats.lookups;
     if (auto found = m_entries.find(key); found != m_entries.end()) {
@@ -328,6 +333,15 @@ SDL_GPUTexture *GsTextureCache::acquire(const GSDrawState &state, std::string &e
         if (!entry.dirty.empty() && (!sampled || entry.dirty.intersects(*sampled)) &&
             !update(key, entry, error, sampled))
             return nullptr;
+        // The store changed (a pack read, art redrawn, replacements turned
+        // off) or the render scale did: this texture's picture may too.
+        if (entry.hdStamp != replacementStamp())
+            matchReplacement(key, entry);
+        if (entry.hd) {
+            if (scale)
+                *scale = entry.hdScale;
+            return entry.hd;
+        }
         return entry.texture;
     }
 
@@ -342,11 +356,195 @@ SDL_GPUTexture *GsTextureCache::acquire(const GSDrawState &state, std::string &e
     markSourcePages(key, entry.pages);
     markTexelPages(key, entry.texelPages);
     markClutPages(key, entry.clutPages);
-    SDL_GPUTexture *texture = entry.texture;
     m_sourcePagesAll |= entry.pages;
     Entry &stored = m_entries.emplace(key, std::move(entry)).first->second;
     gsForEachPage(stored.pages, [&](uint32_t page) { m_entriesByPage[page].push_back(&stored); });
-    return texture;
+    if (GsReplacementStore::instance().logging())
+        std::fprintf(stderr, "[texrep] texture tbp0=%05x tbw=%u psm=%02x %ux%u built %016llx_%016llx\n", key.tbp0,
+                     key.tbw, key.psm, key.width, key.height, static_cast<unsigned long long>(stored.identity.texels),
+                     static_cast<unsigned long long>(stored.identity.clut));
+    matchReplacement(key, stored);
+    if (stored.hd) {
+        if (scale)
+            *scale = stored.hdScale;
+        return stored.hd;
+    }
+    return stored.texture;
+}
+
+// The stamp a lookup holds under: the store's generation and the render
+// scale, which generated pictures are drawn at.
+uint64_t GsTextureCache::replacementStamp() const {
+    return GsReplacementStore::instance().generation() * 16u + std::min<uint32_t>(m_targets.scale(), 15u);
+}
+
+void GsTextureCache::dropReplacement(Entry &entry) {
+    if (!entry.hd)
+        return;
+    beforeRewrite(entry.hd);
+    if (m_device.valid())
+        SDL_ReleaseGPUTexture(m_device.handle(), entry.hd);
+    entry.hd = nullptr;
+    entry.hdScale = 1u;
+    entry.hdRegion = {};
+    entry.hdHash = 0u;
+    ++m_stats.replacementsDropped;
+}
+
+// Hashes the texture's top-left parts the store has replacements of that
+// size for, and binds the first one found: the game's texels upscaled
+// (nearest) with the picture over its part. A texture whose texels are not
+// all known (built on the GPU from a target, or with unresolved target
+// pages in the part) is left alone.
+void GsTextureCache::matchReplacement(const GsTextureKey &key, Entry &entry) {
+    GsReplacementStore &store = GsReplacementStore::instance();
+    entry.hdStamp = replacementStamp();
+    const std::vector<GsReplacementShape> shapes = store.shapes(key.psm, key.width, key.height);
+    if (shapes.empty() || !entry.texture || entry.renderable) {
+        dropReplacement(entry);
+        return;
+    }
+    const uint64_t clut = gsIsIndexedPsm(key.psm) ? (entry.identity.clut ? entry.identity.clut : hashClutWindow(key))
+                                                  : 0u;
+    for (const GsReplacementShape &shape : shapes) {
+        const GsRegion part{0u, 0u, shape.width, shape.height};
+        if (!entry.unresolved.empty() && entry.unresolved.intersects(part))
+            continue;
+        const bool whole = shape.width == key.width && shape.height == key.height;
+        const uint64_t texels = whole && entry.identity.texels != 0u
+                                    ? entry.identity.texels
+                                    : expand(key, part, true, shape.width, shape.height);
+        if (texels == 0u)
+            continue;
+        const GsReplacementKey wanted{texels, clut, key.psm, shape.width, shape.height};
+        if (store.logging())
+            std::fprintf(stderr, "[texrep] lookup tbp0=%05x psm=%02x %ux%u part %ux%u: %016llx_%016llx\n", key.tbp0,
+                         key.psm, key.width, key.height, shape.width, shape.height,
+                         static_cast<unsigned long long>(texels), static_cast<unsigned long long>(clut));
+        // The part's own texels for a generator, then the whole texture
+        // upscaled under the picture.
+        expand(key, part);
+        const std::vector<uint8_t> native = m_staging;
+        GsReplacementPicture picture;
+        if (!store.picture(wanted, m_targets.scale(), native.data(), picture))
+            continue;
+        const uint32_t s = picture.scale;
+        const uint64_t hdWidth = static_cast<uint64_t>(key.width) * s;
+        const uint64_t hdHeight = static_cast<uint64_t>(key.height) * s;
+        if (hdWidth > 8192u || hdHeight > 8192u || hdWidth * hdHeight * 4u > (64ull << 20u)) {
+            std::fprintf(stderr, "[texrep] %s: %llux%llu is too large; the game's texture stays\n",
+                         picture.label.c_str(), static_cast<unsigned long long>(hdWidth),
+                         static_cast<unsigned long long>(hdHeight));
+            continue;
+        }
+        expand(key, {0u, 0u, key.width, key.height});
+        std::vector<uint8_t> hd(static_cast<size_t>(hdWidth * hdHeight * 4u));
+        for (uint32_t y = 0u; y < hdHeight; ++y) {
+            uint8_t *row = hd.data() + static_cast<size_t>(y) * hdWidth * 4u;
+            const uint32_t sourceY = y / s;
+            if (sourceY < shape.height) {
+                std::memcpy(row, picture.image->rgba.data() + static_cast<size_t>(y) * shape.width * s * 4u,
+                            static_cast<size_t>(shape.width) * s * 4u);
+            }
+            const uint32_t firstX = sourceY < shape.height ? shape.width : 0u;
+            const uint8_t *source = m_staging.data() + static_cast<size_t>(sourceY) * key.width * 4u;
+            for (uint32_t x = firstX * s; x < hdWidth; ++x)
+                std::memcpy(row + static_cast<size_t>(x) * 4u, source + static_cast<size_t>(x / s) * 4u, 4u);
+        }
+
+        SDL_GPUTextureCreateInfo info{};
+        info.type = SDL_GPU_TEXTURETYPE_2D;
+        info.format = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
+        info.width = static_cast<uint32_t>(hdWidth);
+        info.height = static_cast<uint32_t>(hdHeight);
+        info.layer_count_or_depth = 1u;
+        info.num_levels = 1u;
+        info.sample_count = SDL_GPU_SAMPLECOUNT_1;
+        info.usage = SDL_GPU_TEXTUREUSAGE_SAMPLER;
+        SDL_GPUTexture *texture = SDL_CreateGPUTexture(m_device.handle(), &info);
+        std::string error;
+        if (!texture) {
+            std::fprintf(stderr, "[texrep] SDL_CreateGPUTexture: %s; the game's texture stays\n", SDL_GetError());
+            continue;
+        }
+        if (!uploadRect(texture, 0u, 0u, info.width, info.height, hd.data(), error)) {
+            std::fprintf(stderr, "[texrep] upload: %s; the game's texture stays\n", error.c_str());
+            SDL_ReleaseGPUTexture(m_device.handle(), texture);
+            continue;
+        }
+        dropReplacement(entry);
+        entry.hd = texture;
+        entry.hdScale = s;
+        entry.hdRegion = part;
+        entry.hdHash = texels;
+        ++m_stats.replacements;
+        std::fprintf(stderr, "[texrep] tbp0=%05x psm=%02x %ux%u: %s at %ux over %ux%u\n", key.tbp0, key.psm,
+                     key.width, key.height, picture.label.c_str(), s, shape.width, shape.height);
+        return;
+    }
+    dropReplacement(entry);
+}
+
+void GsTextureCache::followReplacement(const GsTextureKey &key, Entry &entry, const GsRegion &region,
+                                       bool uploaded) {
+    if (!entry.hd) {
+        // A texture with no picture yet: worth a lookup only when the
+        // store has one of its format and size, and texels it would hash
+        // changed.
+        if (!uploaded)
+            return;
+        for (const GsReplacementShape &shape : GsReplacementStore::instance().shapes(key.psm, key.width, key.height))
+            if (region.intersects(GsRegion{0u, 0u, shape.width, shape.height})) {
+                matchReplacement(key, entry);
+                return;
+            }
+        return;
+    }
+    if (entry.renderable) {
+        dropReplacement(entry);
+        return;
+    }
+    if (GsReplacementStore::instance().logging())
+        std::fprintf(stderr, "[texrep] follow tbp0=%05x region %u,%u-%u,%u uploaded=%d\n", key.tbp0, region.x0,
+                     region.y0, region.x1, region.y1, uploaded ? 1 : 0);
+    if (region.intersects(entry.hdRegion)) {
+        const GsRegion part = entry.hdRegion;
+        if (!entry.unresolved.empty() && entry.unresolved.intersects(part)) {
+            dropReplacement(entry);
+            return;
+        }
+        if (expand(key, part, true, part.width(), part.height()) != entry.hdHash) {
+            matchReplacement(key, entry);
+            return;
+        }
+    }
+    if (!uploaded)
+        return;
+    // The texels outside the picture are the game's: m_staging holds
+    // `region` as just expanded, upscaled here in up to two strips (right
+    // of the picture, and below it).
+    const uint32_t s = entry.hdScale;
+    std::vector<uint8_t> strip;
+    std::string error;
+    const auto put = [&](uint32_t x0, uint32_t y0, uint32_t x1, uint32_t y1) {
+        if (x0 >= x1 || y0 >= y1)
+            return;
+        const uint32_t w = (x1 - x0) * s, h = (y1 - y0) * s;
+        strip.resize(static_cast<size_t>(w) * h * 4u);
+        for (uint32_t y = 0u; y < h; ++y) {
+            const uint8_t *source =
+                m_staging.data() + (static_cast<size_t>(y0 + y / s - region.y0) * region.width() + (x0 - region.x0)) * 4u;
+            uint8_t *row = strip.data() + static_cast<size_t>(y) * w * 4u;
+            for (uint32_t x = 0u; x < w; ++x)
+                std::memcpy(row + static_cast<size_t>(x) * 4u, source + static_cast<size_t>(x / s) * 4u, 4u);
+        }
+        beforeRewrite(entry.hd);
+        if (!uploadRect(entry.hd, x0 * s, y0 * s, w, h, strip.data(), error))
+            std::fprintf(stderr, "[texrep] upload: %s\n", error.c_str());
+    };
+    const GsRegion &part = entry.hdRegion;
+    put(std::max(region.x0, part.x1), region.y0, region.x1, std::min(region.y1, part.y1));
+    put(region.x0, std::max(region.y0, part.y1), region.x1, region.y1);
 }
 
 // Expands one texel rectangle into m_staging as tightly packed RGBA8 rows of
@@ -385,7 +583,8 @@ void GsTextureCache::buildPalette(const GsTextureKey &key) {
     }
 }
 
-uint64_t GsTextureCache::expand(const GsTextureKey &key, const GsRegion &region, bool hashOnly) {
+uint64_t GsTextureCache::expand(const GsTextureKey &key, const GsRegion &region, bool hashOnly, uint32_t seedWidth,
+                                uint32_t seedHeight) {
     const TexaState texa = unpackTexa(key.texa);
     const uint32_t clutWidth = std::max<uint32_t>(key.texclut & 0xffu, 1u);
     const uint32_t clutOriginU = (key.texclut >> 8u) & 0xffu;
@@ -397,8 +596,9 @@ uint64_t GsTextureCache::expand(const GsTextureKey &key, const GsRegion &region,
 
     if (!hashOnly)
         m_staging.resize(static_cast<size_t>(regionWidth) * regionHeight * 4u);
-    uint64_t texelHash =
-        hashStep(hashStep(hashStep(kHashSeed, key.width), key.height), key.psm);
+    uint64_t texelHash = hashStep(hashStep(hashStep(kHashSeed, seedWidth ? seedWidth : key.width),
+                                           seedHeight ? seedHeight : key.height),
+                                  key.psm);
 
     // The palette resolved to final RGBA once per expand, so the texel loop is
     // a load and a store. A per-pixel swizzled palette read here was the
@@ -593,9 +793,12 @@ void GsTextureCache::releaseUploadPool() {
 
 bool GsTextureCache::uploadRegion(SDL_GPUTexture *texture, const GsRegion &region,
                                   std::string &error) {
+    return uploadRect(texture, region.x0, region.y0, region.width(), region.height(), m_staging.data(), error);
+}
+
+bool GsTextureCache::uploadRect(SDL_GPUTexture *texture, uint32_t x, uint32_t y, uint32_t width, uint32_t height,
+                                const uint8_t *rgba, std::string &error) {
     SDL_GPUDevice *device = m_device.handle();
-    const uint32_t width = region.width();
-    const uint32_t height = region.height();
     const size_t bytes = static_cast<size_t>(width) * height * 4u;
 
     SDL_GPUTransferBuffer *upload = takeUploadBuffer(bytes);
@@ -608,7 +811,7 @@ bool GsTextureCache::uploadRegion(SDL_GPUTexture *texture, const GsRegion &regio
         error = std::string("SDL_MapGPUTransferBuffer(texture cache): ") + SDL_GetError();
         return false;
     }
-    std::memcpy(mapped, m_staging.data(), bytes);
+    std::memcpy(mapped, rgba, bytes);
     SDL_UnmapGPUTransferBuffer(device, upload);
 
     SDL_GPUCommandBuffer *commands = m_device.pendingCommands(error);
@@ -626,8 +829,8 @@ bool GsTextureCache::uploadRegion(SDL_GPUTexture *texture, const GsRegion &regio
     source.rows_per_layer = height;
     SDL_GPUTextureRegion destination{};
     destination.texture = texture;
-    destination.x = region.x0;
-    destination.y = region.y0;
+    destination.x = x;
+    destination.y = y;
     destination.w = width;
     destination.h = height;
     destination.d = 1u;
@@ -856,6 +1059,7 @@ bool GsTextureCache::update(const GsTextureKey &key, Entry &entry, std::string &
     if (!expandFromTarget(key, entry, region, expanded, error))
         return false;
     if (expanded) {
+        dropReplacement(entry);
         entry.identity.texels = 0u;
         entry.clutUploadPending = false;
         entry.dirty.clear();
@@ -912,6 +1116,13 @@ bool GsTextureCache::update(const GsTextureKey &key, Entry &entry, std::string &
         entry.identity.texels = 0u;
     }
     entry.dirty.clear();
+    // A bound picture follows the texels it stands over (Rogue Galaxy:
+    // added).
+    if (!unchanged && wholeTexture && GsReplacementStore::instance().logging())
+        std::fprintf(stderr, "[texrep] texture tbp0=%05x tbw=%u psm=%02x %ux%u now %016llx_%016llx\n", key.tbp0,
+                     key.tbw, key.psm, key.width, key.height, static_cast<unsigned long long>(entry.identity.texels),
+                     static_cast<unsigned long long>(entry.identity.clut));
+    followReplacement(key, entry, region, !unchanged);
     ++m_stats.partialUpdates;
     m_stats.texelsUpdated += static_cast<uint64_t>(region.width()) * region.height();
     return true;

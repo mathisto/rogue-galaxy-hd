@@ -1961,6 +1961,10 @@ struct SdlGpuBackend::Impl {
         GsClampState clampState{};
         draw.texture = dummyTexture;
         float textureScale = 1.0f;
+        // The cache handed a replacement picture above the GS's resolution
+        // (Rogue Galaxy: added).
+        bool replaced = false;
+        bool replacedClamp = false;
         // For `last`: the texture came from the cache, and from these pages.
         bool plainTexture = false;
         SDL_GPUTexture *plainTextureHandle = nullptr;
@@ -2116,9 +2120,16 @@ struct SdlGpuBackend::Impl {
                 ResolveReasonScope scope(*targets, GsResolveReason::Texture);
                 GsRegion reach;
                 const bool bounded = sampledTexelRect(batch, reach);
-                texture = textures->acquire(state, textureError, bounded ? &reach : nullptr);
+                uint32_t pictureScale = 1u;
+                texture = textures->acquire(state, textureError, bounded ? &reach : nullptr, &pictureScale);
                 if (!texture && !textureError.empty())
                     setError(std::move(textureError));
+                // A replacement picture: its texels per GS texel (Rogue
+                // Galaxy: added).
+                if (texture && pictureScale > 1u) {
+                    replaced = true;
+                    textureScale = static_cast<float>(pictureScale);
+                }
                 plainTexture = true;
                 plainTextureHandle = texture;
                 plainReach = reach;
@@ -2133,6 +2144,13 @@ struct SdlGpuBackend::Impl {
                     control |= kFragFlagTcc;
                 if (state.linearFilter)
                     control |= kFragFlagLinear;
+                // A replacement picture at the render scale is sampled a
+                // physical texel per host pixel, point for point. At any
+                // other scale a point sample would skip or repeat its texels,
+                // so it is filtered between them (Rogue Galaxy: added).
+                if (replaced && static_cast<uint32_t>(textureScale) != color->scale)
+                    control |= kFragFlagLinear;
+                const bool ct16Target = color->psm == GS_PSM_CT16 || color->psm == GS_PSM_CT16S;
                 // A sprite's UVs can span a texel more than its pixels (DQ8's
                 // font: 23 texels over 22 pixels), so the GS never reaches the
                 // last one. Sampling between native pixels would, and pull in
@@ -2141,13 +2159,47 @@ struct SdlGpuBackend::Impl {
                 // copies of reinterpreted pixels. Filtering between native
                 // pixels would blend neighbouring halfwords, so they sample
                 // on the native grid too, bilinear or not.
+                // Not a replacement picture, whose detail is the point; a
+                // filtered one is clamped to the sprite's texels instead
+                // below (Rogue Galaxy: added).
                 if (state.prim.fst && color->scale > 1u &&
-                    (!state.linearFilter || color->psm == GS_PSM_CT16 || color->psm == GS_PSM_CT16S))
+                    ((!replaced && !state.linearFilter) || ct16Target))
                     control |= kFragFlagNativeGrid |
                                (std::min<uint32_t>(color->scale, 15u) << kFragTargetScaleShift);
                 textureWidth = static_cast<float>(std::max<uint16_t>(state.textureWidth, 1u));
                 textureHeight = static_cast<float>(std::max<uint16_t>(state.textureHeight, 1u));
                 clampState = gsDecodeClamp(context.clamp);
+                // A filtered replacement sprite reaches half a physical
+                // texel past its UVs, into the next glyph or icon of the
+                // sheet at the picture's resolution: clamp it to the texels
+                // the sprite covers (REGION_CLAMP). Per sprite, so such a
+                // sprite is not batched with the next (Rogue Galaxy: added).
+                if (replaced && (control & kFragFlagLinear) != 0u && state.prim.fst &&
+                    state.prim.type == GS_PRIM_SPRITE && batch.vertexCount > 0u) {
+                    double minU = batch.vertices[0].u / 16.0, maxU = minU;
+                    double minV = batch.vertices[0].v / 16.0, maxV = minV;
+                    for (uint8_t i = 1u; i < batch.vertexCount; ++i) {
+                        minU = std::min(minU, batch.vertices[i].u / 16.0);
+                        maxU = std::max(maxU, batch.vertices[i].u / 16.0);
+                        minV = std::min(minV, batch.vertices[i].v / 16.0);
+                        maxV = std::max(maxV, batch.vertices[i].v / 16.0);
+                    }
+                    const auto lastTexel = [](double lo, double hi) {
+                        return static_cast<uint32_t>(std::max(std::ceil(hi) - 1.0, std::floor(lo)));
+                    };
+                    if (clampState.wrapU == kWrapClamp && minU >= 0.0 && maxU <= textureWidth) {
+                        clampState.wrapU = kWrapRegionClamp;
+                        clampState.minU = static_cast<uint32_t>(std::floor(minU));
+                        clampState.maxU = lastTexel(minU, maxU);
+                        replacedClamp = true;
+                    }
+                    if (clampState.wrapV == kWrapClamp && minV >= 0.0 && maxV <= textureHeight) {
+                        clampState.wrapV = kWrapRegionClamp;
+                        clampState.minV = static_cast<uint32_t>(std::floor(minV));
+                        clampState.maxV = lastTexel(minV, maxV);
+                        replacedClamp = true;
+                    }
+                }
                 draw.texture = texture;
             } else {
                 // A texture that cannot be built leaves the primitive drawing
@@ -2272,7 +2324,7 @@ struct SdlGpuBackend::Impl {
         // past the buffer decides per vertex whether the surface widens.
         const bool widens = static_cast<uint32_t>(context.scissor.x1) + 1u > bufferPixels && bufferPixels != 0u;
         last.valid = !feedbackRecorded && !draw.feedback && !draw.destination && !draw.source && !clearsWhole &&
-                     !widens &&
+                     !widens && !replacedClamp &&
                      (!state.prim.tme || plainTexture);
         if (last.valid) {
             std::memcpy(&last.state, &state, sizeof(last.state));

@@ -9,6 +9,7 @@
 // local-memory page, so transfers refresh only affected texels on next use.
 #pragma once
 
+#include "gfx/backends/sdlgpu/sdlgpu_replacements.h"
 #include "gfx/backends/sdlgpu/sdlgpu_targets.h"
 #include "gfx/gs/gs_vram.h"
 
@@ -84,6 +85,9 @@ struct GsTextureCacheStats {
     uint64_t renderTargetSources = 0u;
     // Of those, 8-bit indexed ones built on the GPU from the target itself.
     uint64_t expandedFromTargets = 0u;
+    // Replacement pictures bound, and dropped again (Rogue Galaxy: added).
+    uint64_t replacements = 0u;
+    uint64_t replacementsDropped = 0u;
 
     double hitRate() const {
         return lookups == 0u ? 0.0
@@ -108,7 +112,11 @@ public:
     // owns is then read back only there; the rest waits for a draw that
     // reaches it. Rogue Galaxy declares a 512x512 texture over the 512x416 it
     // uploads, and the lines below lie in a live target.
-    SDL_GPUTexture *acquire(const GSDrawState &state, std::string &error, const GsRegion *sampled = nullptr);
+    // `scale`, when given, receives the physical texels per GS texel of the
+    // texture returned: above 1 for a replacement picture
+    // (GsReplacementStore, Rogue Galaxy: added), 1 for the game's own.
+    SDL_GPUTexture *acquire(const GSDrawState &state, std::string &error, const GsRegion *sampled = nullptr,
+                            uint32_t *scale = nullptr);
 
     // Why a range of local memory stopped being trustworthy. Kept apart
     // because the two have very different fixes: a host write really did
@@ -174,6 +182,16 @@ private:
         // over several of a write's pages is visited once (Rogue Galaxy:
         // added).
         uint64_t invalidated = 0u;
+        // A replacement picture standing in for the texture (Rogue Galaxy:
+        // added): `hd`, `hdScale` times the texture's size, the game's texels
+        // upscaled with the picture over hdRegion, whose texels hashed to
+        // hdHash. hdStamp is the store generation and render scale it was
+        // looked up under; a change of either looks it up again.
+        SDL_GPUTexture *hd = nullptr;
+        uint32_t hdScale = 1u;
+        GsRegion hdRegion;
+        uint64_t hdHash = 0u;
+        uint64_t hdStamp = 0u;
     };
 
     std::function<void(SDL_GPUTexture *)> m_beforeRewrite;
@@ -216,7 +234,24 @@ private:
     // the raw texels it read, which is the whole texture's identity only when
     // the region is the whole texture. `hashOnly` reads and hashes them the
     // same way and expands nothing (Rogue Galaxy: added).
-    uint64_t expand(const GsTextureKey &key, const GsRegion &region, bool hashOnly = false);
+    // `seedWidth`/`seedHeight` stand in for the texture's size in the hash's
+    // seed, so the top-left part of a texture hashes as a texture of that size
+    // would (replacements of part of a texture; Rogue Galaxy: added).
+    uint64_t expand(const GsTextureKey &key, const GsRegion &region, bool hashOnly = false, uint32_t seedWidth = 0u,
+                    uint32_t seedHeight = 0u);
+    // Replacements (Rogue Galaxy: added). The stamp an entry's lookup is
+    // valid under.
+    uint64_t replacementStamp() const;
+    // Looks the entry's texture up in the store and binds or drops its
+    // picture. Local memory must hold the texture's current texels.
+    void matchReplacement(const GsTextureKey &key, Entry &entry);
+    void dropReplacement(Entry &entry);
+    // After update() rewrote `region` of the game's texture from m_staging:
+    // keeps a bound picture in step (the texels outside its region are the
+    // game's, upscaled) or looks it up again when its region changed.
+    void followReplacement(const GsTextureKey &key, Entry &entry, const GsRegion &region, bool uploaded);
+    bool uploadRect(SDL_GPUTexture *texture, uint32_t x, uint32_t y, uint32_t width, uint32_t height,
+                    const uint8_t *rgba, std::string &error);
     bool uploadRegion(SDL_GPUTexture *texture, const GsRegion &region, std::string &error);
     // Transfer buffers come from a pool guarded by the device's submission
     // serials: the movie path uploads dozens of regions a frame, and creating
