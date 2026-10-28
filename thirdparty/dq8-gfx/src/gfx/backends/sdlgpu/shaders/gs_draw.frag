@@ -60,6 +60,8 @@ const uint FLAG_FGE = 1u << 3u;
 const uint FLAG_ATE = 1u << 4u;
 const uint FLAG_LINEAR = 1u << 5u;
 const uint FLAG_NATIVE_GRID = 1u << 6u;
+// A replacement texture with smaller levels; the count at bits 8-11.
+const uint FLAG_MIPMAPS = 1u << 7u;
 
 const uint WRAP_REPEAT = 0u;
 const uint WRAP_CLAMP = 1u;
@@ -100,6 +102,9 @@ int wrapAxis(int texel, uint mode, int size, int regionMin, int regionMax) {
 // the sub-sample plane this fragment writes, so a bit-exact copy keeps each
 // plane separate. Negative when unused.
 vec2 g_plane = vec2(-1.0);
+// The level a replacement texture is read at: each halves the physical
+// texels per GS texel, down to the GS's own (Rogue Galaxy: added).
+int g_level = 0;
 
 vec4 fetchTexelAt(ivec2 texel, vec2 subTexel) {
     const ivec2 size = ivec2(params.textureSize.xy);
@@ -110,7 +115,7 @@ vec4 fetchTexelAt(ivec2 texel, vec2 subTexel) {
                           wrapAxis(texel.y, wrapV, size.y, region.z, region.w));
     wrapped = clamp(wrapped, ivec2(0), size - 1);
 
-    const int scale = max(int(params.misc.y), 1);
+    const int scale = max(max(int(params.misc.y), 1) >> g_level, 1);
     ivec2 physical = wrapped * scale;
     if (scale > 1)
         physical += g_plane.x >= 0.0 ? ivec2(g_plane)
@@ -118,8 +123,8 @@ vec4 fetchTexelAt(ivec2 texel, vec2 subTexel) {
     // Within the bound texture too: an upscaled target's sub-pixels past the
     // GS's last sample may reach a texel beyond the target, which the CPU
     // side does not pad when the GS itself never reads it.
-    const ivec2 bound = min(size * scale, textureSize(gsTexture, 0)) - 1;
-    vec4 color = texelFetch(gsTexture, clamp(physical, ivec2(0), bound), 0);
+    const ivec2 bound = min(size * scale, textureSize(gsTexture, g_level)) - 1;
+    vec4 color = texelFetch(gsTexture, clamp(physical, ivec2(0), bound), g_level);
     const uint format = uint(params.misc.z);
     if (format != 0u) {
         uvec4 raw = uvec4(round(color * 255.0));
@@ -177,6 +182,16 @@ vec4 sampleTexture() {
             g_plane = vec2(plane);
     }
 
+    // A minified replacement reads the level whose texels are about a host
+    // pixel apart, so a 4x texture far away does not shimmer.
+    if ((params.control.x & FLAG_MIPMAPS) != 0u) {
+        const int levels = int((params.control.x >> 8u) & 15u);
+        const vec2 dx = dFdx(texel) * params.misc.y;
+        const vec2 dy = dFdy(texel) * params.misc.y;
+        const float footprint = max(dot(dx, dx), dot(dy, dy));
+        g_level = clamp(int(floor(0.5 * log2(max(footprint, 1.0e-8)))), 0, levels - 1);
+    }
+
     if ((params.control.x & FLAG_LINEAR) == 0u) {
         const vec2 base = floor(texel + POINT_SAMPLE_BIAS);
         return fetchTexelAt(ivec2(base), texel - base);
@@ -187,7 +202,7 @@ vec4 sampleTexture() {
     // instead brings every copy of the frame back down to native detail, and
     // DQ8 copies the whole frame to its display buffer bilinearly. Native-grid
     // copies keep their sub-sample plane and stay on the GS path below.
-    const int sourceScale = max(int(params.misc.y), 1);
+    const int sourceScale = max(max(int(params.misc.y), 1) >> g_level, 1);
     if (sourceScale > 1 && g_plane.x < 0.0) {
         const vec2 physical = texel * float(sourceScale) - 0.5;
         const ivec2 first = ivec2(floor(physical));

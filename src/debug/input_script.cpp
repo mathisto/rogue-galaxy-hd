@@ -15,6 +15,9 @@
 
 #include "Stubs/Pad.h"
 #include "hotkeys.h"
+#if defined(RG_HAS_SDLGPU)
+#include "gfx/backends/sdlgpu/sdlgpu_replacements.h"
+#endif
 
 namespace rg::debug
 {
@@ -160,6 +163,33 @@ void startInputFile(const char *path)
                     std::printf("[input] file: shot\n");
                     continue;
                 }
+                // "key NAME": a host key pressed and let go (F2 pauses, F8
+                // reads the texture pack again).
+                if (line.rfind("key ", 0) == 0)
+                {
+                    const SDL_Scancode scancode = SDL_GetScancodeFromName(line.c_str() + 4);
+                    for (const bool down : {true, false})
+                    {
+                        SDL_Event event{};
+                        event.type = down ? SDL_EVENT_KEY_DOWN : SDL_EVENT_KEY_UP;
+                        event.key.scancode = scancode;
+                        event.key.key = SDL_GetKeyFromScancode(scancode, SDL_KMOD_NONE, false);
+                        event.key.down = down;
+                        SDL_PushEvent(&event);
+                    }
+                    std::printf("[input] file: %s\n", line.c_str());
+                    continue;
+                }
+#if defined(RG_HAS_SDLGPU)
+                // "pack on|off": the texture pack's files shown or not (the
+                // generated font and prompts stay), for before/after pictures.
+                if (line == "pack on" || line == "pack off")
+                {
+                    dq8::gfx::GsReplacementStore::instance().setFilesEnabled(line == "pack on");
+                    std::printf("[input] file: %s\n", line.c_str());
+                    continue;
+                }
+#endif
                 // BUTTONS[:READS]: held for that many pad reads (default 6).
                 Step step{};
                 const size_t colon = line.find(':');

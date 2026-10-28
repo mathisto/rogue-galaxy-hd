@@ -55,6 +55,7 @@
 // stb_image, as the runtime's raylib builds it.
 extern "C" unsigned char *stbi_load(const char *filename, int *x, int *y, int *comp, int req_comp);
 extern "C" void stbi_image_free(void *retval_from_stbi_load);
+extern "C" int stbi_write_png(const char *filename, int w, int h, int comp, const void *data, int stride_in_bytes);
 #endif
 
 namespace rg::graphics
@@ -173,6 +174,8 @@ void applyGameNumber(const std::string &key, int value)
         rg::hdtext::setPrompts(value);
     else if (key == "font_style")
         rg::hdtext::setModernFont(value == 1);
+    else if (key == "texture_memory" && !std::getenv("RG_TEXTURE_BUDGET_MB"))
+        dq8::gfx::GsReplacementStore::instance().setBudgetMegabytes(static_cast<uint32_t>(value));
 #endif
 }
 
@@ -185,6 +188,8 @@ std::atomic<unsigned> g_f10Presses{0u};
 std::atomic<unsigned> g_f7Presses{0u};
 // F6 turns the free camera on or off.
 std::atomic<unsigned> g_f6Presses{0u};
+// F8 reads the texture pack folder again (hot reload).
+std::atomic<unsigned> g_f8Presses{0u};
 // The longest gap between two pump() calls since the stats line last printed
 // it. The presenter loop calls pump several times a frame, so this is not the
 // frame time (the backend's "longest frame" is) but the longest the main
@@ -214,6 +219,10 @@ bool SDLCALL countMarkKeys(void *, SDL_Event *event)
         else if (event->key.scancode == SDL_SCANCODE_F7)
         {
             g_f7Presses.fetch_add(1u, std::memory_order_relaxed);
+        }
+        else if (event->key.scancode == SDL_SCANCODE_F8 && !(g_menu && g_menu->capturingBinding()))
+        {
+            g_f8Presses.fetch_add(1u, std::memory_order_relaxed);
         }
         else if (event->key.scancode == SDL_SCANCODE_F6 && !(g_menu && g_menu->capturingBinding()))
         {
@@ -336,6 +345,33 @@ bool pump(void *userData)
         }
         rg::hdtext::notePlayStationPad(playStation);
     }
+#if defined(RG_HAS_SDLGPU)
+    // F8: the texture pack read again, and every ten seconds a line on what
+    // it holds while one is in use (Rogue Galaxy: added).
+    {
+        auto &store = dq8::gfx::GsReplacementStore::instance();
+        static unsigned f8Seen = 0u;
+        if (const unsigned f8 = g_f8Presses.load(std::memory_order_relaxed); f8 != f8Seen)
+        {
+            f8Seen = f8;
+            store.reload();
+            std::fprintf(stderr, "[texrep] F8: reading the texture pack again\n");
+            if (g_menu)
+            {
+                g_menu->notify("Texture pack: reading it again", dq8::ui::Icon::Folder);
+            }
+        }
+        static auto lastSummary = std::chrono::steady_clock::now();
+        if (const auto now = std::chrono::steady_clock::now(); now - lastSummary > std::chrono::seconds(10))
+        {
+            lastSummary = now;
+            if (store.fileCount() != 0u || store.learning())
+            {
+                std::fprintf(stderr, "[texrep] %s\n", store.summary().c_str());
+            }
+        }
+    }
+#endif
     // The free camera turned on or off, by F6, either menu or Start: a toast.
     static bool freeCameraWas = false;
     if (const bool freeCamera = rg::freecamera::enabled(); freeCamera != freeCameraWas)
@@ -562,8 +598,13 @@ std::unique_ptr<dq8::ui::Overlay> createMenu(PS2Runtime &runtime, dq8::gfx::SdlG
          false, 0, 1, 0, "", 1, true, false, {"Original", "Modern"}},
         {"texture_replacements", "Texture replacements",
          "Off shows every texture as the game has it: no Xbox buttons, no modern font, and no texture pack from "
-         "textures/SCUS-97490/replacements.",
+         "textures/SCUS-97490/replacements. F8 reads the pack's folder again, for a pack being worked on.",
          true},
+        {"texture_memory", "Texture pack memory",
+         "How much video memory a texture pack's pictures may take; the least recently seen give way to new "
+         "ones, and as much again of main memory keeps pictures ready. Raise it if textures stay blurry after a "
+         "scene has loaded and the graphics card has room.",
+         false, 512, 8192, 2048, "%d MB", 512},
         {"dev_tools", "Developer tools",
          "The tools the developers left in the game, switched off for release. Main menu: R3 shows every item's "
          "icon, R1 + R3 a list of them, and Cross gives one of the one picked. Help pages and info list: R1 + "
@@ -693,7 +734,16 @@ Setup::Setup(PS2Runtime &runtime)
                 stbi_image_free(pixels);
                 return true;
             });
-        dq8::gfx::GsReplacementStore::instance().setPackDirectory("textures/SCUS-97490/replacements");
+        dq8::gfx::GsReplacementStore::instance().setImageWriter(
+            [](const std::string &path, uint32_t width, uint32_t height, const uint8_t *rgba) {
+                return stbi_write_png(path.c_str(), static_cast<int>(width), static_cast<int>(height), 4, rgba,
+                                      static_cast<int>(width * 4u)) != 0;
+            });
+        // RG_TEXTURE_PACK=dir: another pack folder for this run.
+        const char *packFolder = std::getenv("RG_TEXTURE_PACK");
+        dq8::gfx::GsReplacementStore::instance().setPackDirectory(packFolder && *packFolder
+                                                                      ? packFolder
+                                                                      : "textures/SCUS-97490/replacements");
         if (noWindow)
         {
             std::printf("[rg] GS: sdlgpu, presenting through the runtime window\n");

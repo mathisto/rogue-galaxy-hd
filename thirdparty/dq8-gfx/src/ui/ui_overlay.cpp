@@ -33,7 +33,7 @@ bool reservedKey(SDL_Scancode scancode) {
     // The grave accent (`, left of 1) holds fast-forward (Rogue Galaxy:
     // added).
     return scancode == SDL_SCANCODE_F1 || scancode == SDL_SCANCODE_F2 || scancode == SDL_SCANCODE_F3 ||
-           scancode == SDL_SCANCODE_F4 || scancode == SDL_SCANCODE_F6 || scancode == SDL_SCANCODE_F11 ||
+           scancode == SDL_SCANCODE_F4 || scancode == SDL_SCANCODE_F6 || scancode == SDL_SCANCODE_F8 || scancode == SDL_SCANCODE_F11 ||
            scancode == SDL_SCANCODE_F12 || scancode == SDL_SCANCODE_GRAVE;
 }
 

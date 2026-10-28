@@ -1965,6 +1965,7 @@ struct SdlGpuBackend::Impl {
         // (Rogue Galaxy: added).
         bool replaced = false;
         bool replacedClamp = false;
+        uint32_t pictureLevels = 1u;
         // For `last`: the texture came from the cache, and from these pages.
         bool plainTexture = false;
         SDL_GPUTexture *plainTextureHandle = nullptr;
@@ -2121,7 +2122,8 @@ struct SdlGpuBackend::Impl {
                 GsRegion reach;
                 const bool bounded = sampledTexelRect(batch, reach);
                 uint32_t pictureScale = 1u;
-                texture = textures->acquire(state, textureError, bounded ? &reach : nullptr, &pictureScale);
+                texture = textures->acquire(state, textureError, bounded ? &reach : nullptr, &pictureScale,
+                                            &pictureLevels);
                 if (!texture && !textureError.empty())
                     setError(std::move(textureError));
                 // A replacement picture: its texels per GS texel (Rogue
@@ -2150,6 +2152,10 @@ struct SdlGpuBackend::Impl {
                 // so it is filtered between them (Rogue Galaxy: added).
                 if (replaced && static_cast<uint32_t>(textureScale) != color->scale)
                     control |= kFragFlagLinear;
+                // Its smaller levels, for 3D: a 4x texture far away would
+                // shimmer sampled at level 0 (Rogue Galaxy: added).
+                if (replaced && pictureLevels > 1u && !state.prim.fst)
+                    control |= kFragFlagMipmaps | (std::min<uint32_t>(pictureLevels, 15u) << kFragLevelsShift);
                 const bool ct16Target = color->psm == GS_PSM_CT16 || color->psm == GS_PSM_CT16S;
                 // A sprite's UVs can span a texel more than its pixels (DQ8's
                 // font: 23 texels over 22 pixels), so the GS never reaches the

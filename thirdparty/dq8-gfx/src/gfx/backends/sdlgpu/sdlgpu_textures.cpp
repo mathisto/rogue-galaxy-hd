@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -196,10 +197,15 @@ size_t GsTextureKeyHash::operator()(const GsTextureKey &key) const {
 }
 
 GsTextureCache::GsTextureCache(SdlGpuDevice &device, GsVram &vram, GsTargetCache &targets)
-    : m_device(device), m_vram(vram), m_targets(targets) {}
+    : m_device(device), m_vram(vram), m_targets(targets) {
+    // RG_TEXTURE_UPLOAD_MB: replacement bytes uploaded per 16 ms at most.
+    if (const char *value = std::getenv("RG_TEXTURE_UPLOAD_MB"); value && std::atoi(value) > 0)
+        m_hdUploadAllowance = static_cast<uint64_t>(std::atoi(value)) << 20u;
+}
 
 GsTextureCache::~GsTextureCache() {
     reset();
+    releasePooled(0u);
 }
 
 void GsTextureCache::reset() {
@@ -210,11 +216,21 @@ void GsTextureCache::reset() {
             (void)key;
             if (entry.texture)
                 SDL_ReleaseGPUTexture(m_device.handle(), entry.texture);
-            if (entry.hd)
+            if (entry.hd && !entry.hdPooled)
                 SDL_ReleaseGPUTexture(m_device.handle(), entry.hd);
         }
     }
     m_entries.clear();
+    // Pooled pictures outlive the entries (the cache clears itself when
+    // full; the pictures are still good).
+    m_hdBytes = 0u;
+    m_hdTextures = 0u;
+    for (auto &[poolKey, pooled] : m_hdPool) {
+        pooled.refs = 0u;
+        m_hdBytes += pooled.bytes;
+        ++m_hdTextures;
+    }
+    GsReplacementStore::instance().noteGpu(m_hdBytes, m_hdTextures);
     m_sourcePagesAll.reset();
     for (auto &entries : m_entriesByPage)
         entries.clear();
@@ -307,12 +323,26 @@ GsTextureKey GsTextureCache::keyFor(const GSDrawState &state) {
 }
 
 SDL_GPUTexture *GsTextureCache::acquire(const GSDrawState &state, std::string &error, const GsRegion *sampled,
-                                        uint32_t *scale) {
+                                        uint32_t *scale, uint32_t *levels) {
     const GsTextureKey key = keyFor(state);
     if (scale)
         *scale = 1u;
+    if (levels)
+        *levels = 1u;
+    const auto useHd = [&](Entry &entry) {
+        entry.hdUse = ++m_useTick;
+        if (scale)
+            *scale = entry.hdScale;
+        if (levels)
+            *levels = entry.hdLevels;
+        return entry.hd;
+    };
 
     ++m_stats.lookups;
+    if (const uint64_t generation = GsReplacementStore::instance().generation(); generation != m_poolGeneration) {
+        m_poolGeneration = generation;
+        flushPool();
+    }
     if (auto found = m_entries.find(key); found != m_entries.end()) {
         ++m_stats.hits;
         Entry &entry = found->second;
@@ -337,11 +367,10 @@ SDL_GPUTexture *GsTextureCache::acquire(const GSDrawState &state, std::string &e
         // off) or the render scale did: this texture's picture may too.
         if (entry.hdStamp != replacementStamp())
             matchReplacement(key, entry);
-        if (entry.hd) {
-            if (scale)
-                *scale = entry.hdScale;
-            return entry.hd;
-        }
+        else if (entry.hdWait && GsReplacementStore::instance().completions() != entry.hdWaitSeen)
+            retryWait(key, entry);
+        if (entry.hd)
+            return useHd(entry);
         return entry.texture;
     }
 
@@ -364,11 +393,8 @@ SDL_GPUTexture *GsTextureCache::acquire(const GSDrawState &state, std::string &e
                      key.tbw, key.psm, key.width, key.height, static_cast<unsigned long long>(stored.identity.texels),
                      static_cast<unsigned long long>(stored.identity.clut));
     matchReplacement(key, stored);
-    if (stored.hd) {
-        if (scale)
-            *scale = stored.hdScale;
-        return stored.hd;
-    }
+    if (stored.hd)
+        return useHd(stored);
     return stored.texture;
 }
 
@@ -379,8 +405,24 @@ uint64_t GsTextureCache::replacementStamp() const {
 }
 
 void GsTextureCache::dropReplacement(Entry &entry) {
+    entry.hdWait = false;
     if (!entry.hd)
         return;
+    if (entry.hdPooled) {
+        // Shared: stays in the pool for the next entry that wants it.
+        if (entry.hdPool && entry.hdPool->refs)
+            --entry.hdPool->refs;
+        entry.hdPooled = false;
+        entry.hdPool = nullptr;
+        entry.hd = nullptr;
+        entry.hdScale = 1u;
+        entry.hdRegion = {};
+        entry.hdHash = 0u;
+        entry.hdBytes = 0u;
+        entry.hdLevels = 1u;
+        ++m_stats.replacementsDropped;
+        return;
+    }
     beforeRewrite(entry.hd);
     if (m_device.valid())
         SDL_ReleaseGPUTexture(m_device.handle(), entry.hd);
@@ -388,29 +430,66 @@ void GsTextureCache::dropReplacement(Entry &entry) {
     entry.hdScale = 1u;
     entry.hdRegion = {};
     entry.hdHash = 0u;
+    m_hdBytes -= std::min(m_hdBytes, entry.hdBytes);
+    m_hdTextures -= m_hdTextures ? 1u : 0u;
+    entry.hdBytes = 0u;
+    entry.hdLevels = 1u;
+    GsReplacementStore::instance().noteGpu(m_hdBytes, m_hdTextures);
     ++m_stats.replacementsDropped;
 }
+
+namespace {
+
+// Only fully transparent and (at least) opaque texels, some of each: a
+// cut-out, whose HD alpha the store may harden to the same silhouettes.
+bool isCutout(const std::vector<uint8_t> &rgba) {
+    bool clear = false, solid = false;
+    for (size_t i = 3u; i < rgba.size(); i += 4u) {
+        const uint8_t a = rgba[i];
+        if (a == 0u)
+            clear = true;
+        else if (a >= 0x80u)
+            solid = true;
+        else
+            return false;
+    }
+    return clear && solid;
+}
+
+} // namespace
 
 // Hashes the texture's top-left parts the store has replacements of that
 // size for, and binds the first one found: the game's texels upscaled
 // (nearest) with the picture over its part. A texture whose texels are not
 // all known (built on the GPU from a target, or with unresolved target
-// pages in the part) is left alone.
+// pages in the part) is left alone. A file the store is still reading
+// leaves the game's texture until it is ready (retryWait).
 void GsTextureCache::matchReplacement(const GsTextureKey &key, Entry &entry) {
     GsReplacementStore &store = GsReplacementStore::instance();
     entry.hdStamp = replacementStamp();
+    entry.hdWait = false;
     const std::vector<GsReplacementShape> shapes = store.shapes(key.psm, key.width, key.height);
     if (shapes.empty() || !entry.texture || entry.renderable) {
         dropReplacement(entry);
+        learnTexture(key, entry);
         return;
     }
     const uint64_t clut = gsIsIndexedPsm(key.psm) ? (entry.identity.clut ? entry.identity.clut : hashClutWindow(key))
                                                   : 0u;
+    const auto powerOfTwo = [](uint32_t v) { return v != 0u && (v & (v - 1u)) == 0u; };
     for (const GsReplacementShape &shape : shapes) {
         const GsRegion part{0u, 0u, shape.width, shape.height};
         if (!entry.unresolved.empty() && entry.unresolved.intersects(part))
             continue;
         const bool whole = shape.width == key.width && shape.height == key.height;
+        // A part is a picture the game uploads into a larger power-of-two
+        // TEX0: along each axis where it is smaller, its size is not a power
+        // of two (512x416 in 512x512, 288x224 in 512x256). Hashing every
+        // smaller power-of-two corner of every texture each time its texels
+        // change cost more than the game's own drawing.
+        if (!whole && ((shape.width != key.width && powerOfTwo(shape.width)) ||
+                       (shape.height != key.height && powerOfTwo(shape.height))))
+            continue;
         const uint64_t texels = whole && entry.identity.texels != 0u
                                     ? entry.identity.texels
                                     : expand(key, part, true, shape.width, shape.height);
@@ -421,68 +500,292 @@ void GsTextureCache::matchReplacement(const GsTextureKey &key, Entry &entry) {
             std::fprintf(stderr, "[texrep] lookup tbp0=%05x psm=%02x %ux%u part %ux%u: %016llx_%016llx\n", key.tbp0,
                          key.psm, key.width, key.height, shape.width, shape.height,
                          static_cast<unsigned long long>(texels), static_cast<unsigned long long>(clut));
-        // The part's own texels for a generator, then the whole texture
-        // upscaled under the picture.
+        if (!store.has(wanted))
+            continue;
+        // Already on the GPU for another entry, or for this one a moment ago.
+        if (whole) {
+            if (auto pooled = m_hdPool.find(wanted); pooled != m_hdPool.end() && pooled->second.texture) {
+                attachPooled(entry, pooled->second, part, texels);
+                return;
+            }
+        }
+        // The part's own texels, for a generator and to tell a cut-out.
         expand(key, part);
+        const bool cutout = isCutout(m_staging);
         const std::vector<uint8_t> native = m_staging;
         GsReplacementPicture picture;
-        if (!store.picture(wanted, m_targets.scale(), native.data(), picture))
+        const uint64_t seen = store.completions();
+        const GsPictureStatus status = store.picture(wanted, m_targets.scale(), native.data(), picture, cutout);
+        if (status == GsPictureStatus::None)
             continue;
-        const uint32_t s = picture.scale;
-        const uint64_t hdWidth = static_cast<uint64_t>(key.width) * s;
-        const uint64_t hdHeight = static_cast<uint64_t>(key.height) * s;
-        if (hdWidth > 8192u || hdHeight > 8192u || hdWidth * hdHeight * 4u > (64ull << 20u)) {
-            std::fprintf(stderr, "[texrep] %s: %llux%llu is too large; the game's texture stays\n",
-                         picture.label.c_str(), static_cast<unsigned long long>(hdWidth),
-                         static_cast<unsigned long long>(hdHeight));
-            continue;
+        if (status == GsPictureStatus::Pending) {
+            // The old picture belongs to other texels: the game's texture
+            // until the new one is read.
+            if (entry.hd && entry.hdHash != texels)
+                dropReplacement(entry);
+            entry.hdWait = true;
+            entry.hdWaitKey = wanted;
+            entry.hdWaitPart = part;
+            entry.hdWaitSeen = seen;
+            return;
         }
+        const BindResult bound = bindPicture(key, entry, part, picture, wanted);
+        if (bound == BindResult::Bound)
+            return;
+        if (bound == BindResult::Deferred) {
+            if (entry.hd && entry.hdHash != texels)
+                dropReplacement(entry);
+            entry.hdWait = true;
+            entry.hdWaitKey = wanted;
+            entry.hdWaitPart = part;
+            entry.hdWaitSeen = 0u; // asks again at the next use
+            return;
+        }
+    }
+    dropReplacement(entry);
+    learnTexture(key, entry);
+}
+
+void GsTextureCache::retryWait(const GsTextureKey &key, Entry &entry) {
+    GsReplacementStore &store = GsReplacementStore::instance();
+    // The part must still hold the texels it was asked for.
+    if (!entry.unresolved.empty() && entry.unresolved.intersects(entry.hdWaitPart)) {
+        entry.hdWait = false;
+        return;
+    }
+    const uint64_t seen = store.completions();
+    GsReplacementPicture picture;
+    const GsPictureStatus status = store.picture(entry.hdWaitKey, m_targets.scale(), nullptr, picture);
+    if (status == GsPictureStatus::Pending) {
+        entry.hdWaitSeen = seen;
+        return;
+    }
+    if (status == GsPictureStatus::None) {
+        // The file failed: anything else (a smaller part, a drawn picture).
+        matchReplacement(key, entry);
+        return;
+    }
+    const GsRegion part = entry.hdWaitPart;
+    const GsReplacementKey wanted = entry.hdWaitKey;
+    const BindResult bound = bindPicture(key, entry, part, picture, wanted);
+    if (bound == BindResult::Deferred) {
+        entry.hdWaitSeen = 0u;
+        return;
+    }
+    entry.hdWait = false;
+    if (bound == BindResult::Failed)
+        matchReplacement(key, entry);
+}
+
+GsTextureCache::BindResult GsTextureCache::bindPicture(const GsTextureKey &key, Entry &entry, const GsRegion &part,
+                                                       const GsReplacementPicture &picture,
+                                                       const GsReplacementKey &wanted) {
+    const uint64_t texels = wanted.texels;
+    const uint32_t s = picture.scale;
+    const uint64_t hdWidth = static_cast<uint64_t>(key.width) * s;
+    const uint64_t hdHeight = static_cast<uint64_t>(key.height) * s;
+    if (hdWidth > 8192u || hdHeight > 8192u || hdWidth * hdHeight * 4u > (256ull << 20u)) {
+        std::fprintf(stderr, "[texrep] %s: %llux%llu is too large; the game's texture stays\n",
+                     picture.label.c_str(), static_cast<unsigned long long>(hdWidth),
+                     static_cast<unsigned long long>(hdHeight));
+        return BindResult::Failed;
+    }
+    const bool whole = part.width() == key.width && part.height() == key.height;
+    const GsReplacementImage &image = *picture.image;
+    const uint32_t levels = whole ? 1u + static_cast<uint32_t>(image.mips.size()) : 1u;
+    const uint64_t bytes = whole ? image.bytes() : hdWidth * hdHeight * 4u;
+
+    // A scene's first frame can ask for hundreds of pictures: spread their
+    // uploads over frames (the game's texture is drawn until then).
+    const int64_t now = std::chrono::duration_cast<std::chrono::microseconds>(
+                            std::chrono::steady_clock::now().time_since_epoch())
+                            .count();
+    if (now - m_hdWindowStart > 16000) {
+        m_hdWindowStart = now;
+        m_hdWindowBytes = 0u;
+    }
+    if (m_hdWindowBytes != 0u && m_hdWindowBytes + bytes > m_hdUploadAllowance)
+        return BindResult::Deferred;
+    m_hdWindowBytes += bytes;
+
+    std::vector<uint8_t> composed;
+    if (!whole) {
         expand(key, {0u, 0u, key.width, key.height});
-        std::vector<uint8_t> hd(static_cast<size_t>(hdWidth * hdHeight * 4u));
+        composed.resize(static_cast<size_t>(hdWidth * hdHeight * 4u));
         for (uint32_t y = 0u; y < hdHeight; ++y) {
-            uint8_t *row = hd.data() + static_cast<size_t>(y) * hdWidth * 4u;
+            uint8_t *row = composed.data() + static_cast<size_t>(y) * hdWidth * 4u;
             const uint32_t sourceY = y / s;
-            if (sourceY < shape.height) {
-                std::memcpy(row, picture.image->rgba.data() + static_cast<size_t>(y) * shape.width * s * 4u,
-                            static_cast<size_t>(shape.width) * s * 4u);
-            }
-            const uint32_t firstX = sourceY < shape.height ? shape.width : 0u;
+            if (sourceY < part.height())
+                std::memcpy(row, image.rgba.data() + static_cast<size_t>(y) * part.width() * s * 4u,
+                            static_cast<size_t>(part.width()) * s * 4u);
+            const uint32_t firstX = sourceY < part.height() ? part.width() : 0u;
             const uint8_t *source = m_staging.data() + static_cast<size_t>(sourceY) * key.width * 4u;
             for (uint32_t x = firstX * s; x < hdWidth; ++x)
                 std::memcpy(row + static_cast<size_t>(x) * 4u, source + static_cast<size_t>(x / s) * 4u, 4u);
         }
+    }
 
-        SDL_GPUTextureCreateInfo info{};
-        info.type = SDL_GPU_TEXTURETYPE_2D;
-        info.format = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
-        info.width = static_cast<uint32_t>(hdWidth);
-        info.height = static_cast<uint32_t>(hdHeight);
-        info.layer_count_or_depth = 1u;
-        info.num_levels = 1u;
-        info.sample_count = SDL_GPU_SAMPLECOUNT_1;
-        info.usage = SDL_GPU_TEXTUREUSAGE_SAMPLER;
-        SDL_GPUTexture *texture = SDL_CreateGPUTexture(m_device.handle(), &info);
-        std::string error;
-        if (!texture) {
-            std::fprintf(stderr, "[texrep] SDL_CreateGPUTexture: %s; the game's texture stays\n", SDL_GetError());
-            continue;
+    SDL_GPUTextureCreateInfo info{};
+    info.type = SDL_GPU_TEXTURETYPE_2D;
+    info.format = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
+    info.width = static_cast<uint32_t>(hdWidth);
+    info.height = static_cast<uint32_t>(hdHeight);
+    info.layer_count_or_depth = 1u;
+    info.num_levels = levels;
+    info.sample_count = SDL_GPU_SAMPLECOUNT_1;
+    info.usage = SDL_GPU_TEXTUREUSAGE_SAMPLER;
+    SDL_GPUTexture *texture = SDL_CreateGPUTexture(m_device.handle(), &info);
+    std::string error;
+    if (!texture) {
+        std::fprintf(stderr, "[texrep] SDL_CreateGPUTexture: %s; the game's texture stays\n", SDL_GetError());
+        return BindResult::Failed;
+    }
+    bool ok = uploadRect(texture, 0u, 0u, info.width, info.height, whole ? image.rgba.data() : composed.data(), error);
+    for (uint32_t level = 1u; ok && level < levels; ++level)
+        ok = uploadRect(texture, 0u, 0u, info.width >> level, info.height >> level, image.mips[level - 1u].data(),
+                        error, level);
+    if (!ok) {
+        std::fprintf(stderr, "[texrep] upload: %s; the game's texture stays\n", error.c_str());
+        SDL_ReleaseGPUTexture(m_device.handle(), texture);
+        return BindResult::Failed;
+    }
+    m_hdBytes += bytes;
+    ++m_hdTextures;
+    ++m_stats.replacements;
+    if (whole) {
+        PooledHd &pooled = m_hdPool[wanted];
+        if (pooled.texture) {
+            // A picture nobody showed any more, read again.
+            for (auto &[otherKey, other] : m_entries)
+                if (other.hdPooled && other.hdPool == &pooled)
+                    dropReplacement(other);
+            beforeRewrite(pooled.texture);
+            SDL_ReleaseGPUTexture(m_device.handle(), pooled.texture);
+            m_hdBytes -= std::min(m_hdBytes, pooled.bytes);
+            --m_hdTextures;
         }
-        if (!uploadRect(texture, 0u, 0u, info.width, info.height, hd.data(), error)) {
-            std::fprintf(stderr, "[texrep] upload: %s; the game's texture stays\n", error.c_str());
-            SDL_ReleaseGPUTexture(m_device.handle(), texture);
-            continue;
-        }
+        pooled = {texture, bytes, s, levels, 0u, 0u};
+        attachPooled(entry, pooled, part, texels);
+    } else {
         dropReplacement(entry);
         entry.hd = texture;
         entry.hdScale = s;
         entry.hdRegion = part;
         entry.hdHash = texels;
-        ++m_stats.replacements;
-        std::fprintf(stderr, "[texrep] tbp0=%05x psm=%02x %ux%u: %s at %ux over %ux%u\n", key.tbp0, key.psm,
-                     key.width, key.height, picture.label.c_str(), s, shape.width, shape.height);
+        entry.hdBytes = bytes;
+        entry.hdLevels = levels;
+        entry.hdUse = ++m_useTick;
+    }
+    if (GsReplacementStore::instance().logging())
+        std::fprintf(stderr, "[texrep] tbp0=%05x psm=%02x %ux%u: %s at %ux over %ux%u%s\n", key.tbp0, key.psm,
+                     key.width, key.height, picture.label.c_str(), s, part.width(), part.height(),
+                     levels > 1u ? " (mipmapped)" : "");
+    enforceHdBudget(&entry);
+    GsReplacementStore::instance().noteGpu(m_hdBytes, m_hdTextures);
+    return BindResult::Bound;
+}
+
+void GsTextureCache::attachPooled(Entry &entry, PooledHd &pooled, const GsRegion &part, uint64_t texels) {
+    if (entry.hdPooled && entry.hdPool == &pooled) {
+        entry.hdHash = texels;
+        entry.hdWait = false;
         return;
     }
     dropReplacement(entry);
+    entry.hd = pooled.texture;
+    entry.hdPooled = true;
+    entry.hdPool = &pooled;
+    entry.hdScale = pooled.scale;
+    entry.hdLevels = pooled.levels;
+    entry.hdRegion = part;
+    entry.hdHash = texels;
+    entry.hdBytes = 0u;
+    entry.hdUse = ++m_useTick;
+    ++pooled.refs;
+    pooled.use = m_useTick;
+}
+
+void GsTextureCache::releasePooled(uint64_t target) {
+    std::vector<std::pair<uint64_t, GsReplacementKey>> idle;
+    for (auto &[poolKey, pooled] : m_hdPool)
+        if (pooled.refs == 0u || target == 0u)
+            idle.push_back({pooled.use, poolKey});
+    std::sort(idle.begin(), idle.end(), [](const auto &a, const auto &b) { return a.first < b.first; });
+    for (const auto &[use, poolKey] : idle) {
+        if (target != 0u && m_hdBytes <= target)
+            break;
+        auto found = m_hdPool.find(poolKey);
+        if (found->second.texture) {
+            beforeRewrite(found->second.texture);
+            if (m_device.valid())
+                SDL_ReleaseGPUTexture(m_device.handle(), found->second.texture);
+        }
+        m_hdBytes -= std::min(m_hdBytes, found->second.bytes);
+        m_hdTextures -= m_hdTextures ? 1u : 0u;
+        m_hdPool.erase(found);
+    }
+    GsReplacementStore::instance().noteGpu(m_hdBytes, m_hdTextures);
+}
+
+void GsTextureCache::flushPool() {
+    if (m_hdPool.empty())
+        return;
+    for (auto &[key, entry] : m_entries)
+        if (entry.hdPooled) {
+            dropReplacement(entry);
+            entry.hdStamp = 0u;
+        }
+    releasePooled(0u);
+}
+
+void GsTextureCache::enforceHdBudget(const Entry *keep) {
+    const uint64_t budget = GsReplacementStore::instance().budgetBytes();
+    if (m_hdBytes <= budget)
+        return;
+    const uint64_t target = budget - budget / 8u;
+    // Pictures nobody shows first, then the least recently drawn entries'.
+    releasePooled(target);
+    uint64_t dropped = 0u;
+    if (m_hdBytes > target) {
+        std::vector<Entry *> bound;
+        for (auto &[key, entry] : m_entries)
+            if (entry.hd && &entry != keep && !(keep && keep->hdPooled && entry.hdPool == keep->hdPool))
+                bound.push_back(&entry);
+        std::sort(bound.begin(), bound.end(), [](const Entry *a, const Entry *b) { return a->hdUse < b->hdUse; });
+        for (Entry *entry : bound) {
+            if (m_hdBytes <= target)
+                break;
+            const bool pooled = entry->hdPooled;
+            dropReplacement(*entry);
+            // Looked up again at its next use.
+            entry->hdStamp = 0u;
+            ++dropped;
+            if (pooled)
+                releasePooled(target);
+        }
+    }
+    if (GsReplacementStore::instance().logging())
+        std::fprintf(stderr, "[texrep] budget: dropped %llu replacement texture(s), %.0f MB on the GPU\n",
+                     static_cast<unsigned long long>(dropped), double(m_hdBytes) / 1048576.0);
+}
+
+void GsTextureCache::learnTexture(const GsTextureKey &key, Entry &entry) {
+    GsReplacementStore &store = GsReplacementStore::instance();
+    if (!store.learning() || entry.identity.texels == 0u || entry.renderable || entry.hd ||
+        !entry.unresolved.empty() || !entry.texture)
+        return;
+    const uint64_t name = entry.identity.texels ^ (entry.identity.clut * 0x9e3779b97f4a7c15ull) ^
+                          (static_cast<uint64_t>(key.width) << 40u) ^ (static_cast<uint64_t>(key.height) << 52u);
+    if (!m_learnSeen.emplace(name, true).second)
+        return;
+    expand(key, {0u, 0u, key.width, key.height});
+    // Nothing to learn from a texture of one colour.
+    bool varied = false;
+    for (size_t i = 4u; i < m_staging.size() && !varied; i += 4u)
+        varied = std::memcmp(m_staging.data(), m_staging.data() + i, 4u) != 0;
+    if (!varied)
+        return;
+    store.learn({entry.identity.texels, entry.identity.clut, key.psm, key.width, key.height}, key.tbp0, m_staging);
 }
 
 void GsTextureCache::followReplacement(const GsTextureKey &key, Entry &entry, const GsRegion &region,
@@ -797,7 +1100,7 @@ bool GsTextureCache::uploadRegion(SDL_GPUTexture *texture, const GsRegion &regio
 }
 
 bool GsTextureCache::uploadRect(SDL_GPUTexture *texture, uint32_t x, uint32_t y, uint32_t width, uint32_t height,
-                                const uint8_t *rgba, std::string &error) {
+                                const uint8_t *rgba, std::string &error, uint32_t level) {
     SDL_GPUDevice *device = m_device.handle();
     const size_t bytes = static_cast<size_t>(width) * height * 4u;
 
@@ -829,6 +1132,7 @@ bool GsTextureCache::uploadRect(SDL_GPUTexture *texture, uint32_t x, uint32_t y,
     source.rows_per_layer = height;
     SDL_GPUTextureRegion destination{};
     destination.texture = texture;
+    destination.mip_level = level;
     destination.x = x;
     destination.y = y;
     destination.w = width;
@@ -1123,6 +1427,9 @@ bool GsTextureCache::update(const GsTextureKey &key, Entry &entry, std::string &
                      key.tbw, key.psm, key.width, key.height, static_cast<unsigned long long>(entry.identity.texels),
                      static_cast<unsigned long long>(entry.identity.clut));
     followReplacement(key, entry, region, !unchanged);
+    // Learn mode: a texture whose whole texels changed is another texture.
+    if (!unchanged && wholeTexture && !entry.hd && !entry.hdWait)
+        learnTexture(key, entry);
     ++m_stats.partialUpdates;
     m_stats.texelsUpdated += static_cast<uint64_t>(region.width()) * region.height();
     return true;

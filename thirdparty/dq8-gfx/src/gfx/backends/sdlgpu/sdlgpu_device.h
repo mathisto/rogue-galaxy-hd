@@ -96,6 +96,11 @@ inline constexpr uint32_t kFragFlagLinear = 1u << 5u;
 // at kFragTargetScaleShift.
 inline constexpr uint32_t kFragFlagNativeGrid = 1u << 6u;
 inline constexpr uint32_t kFragTargetScaleShift = 24u;
+// A replacement texture with generated smaller levels (Rogue Galaxy: added):
+// the shader picks a level by the footprint, never below the GS's own
+// texel; the level count sits at kFragLevelsShift.
+inline constexpr uint32_t kFragFlagMipmaps = 1u << 7u;
+inline constexpr uint32_t kFragLevelsShift = 8u;
 
 struct GsPipelineKey {
     uint32_t colorFormat = 0u;

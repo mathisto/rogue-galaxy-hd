@@ -95,6 +95,17 @@ struct GsTextureCacheStats {
     }
 };
 
+// A whole-texture replacement on the GPU, shared by the cache entries that
+// show it (GsTextureCache::m_hdPool; Rogue Galaxy: added).
+struct PooledHd {
+    SDL_GPUTexture *texture = nullptr;
+    uint64_t bytes = 0u;
+    uint32_t scale = 1u;
+    uint32_t levels = 1u;
+    uint32_t refs = 0u;
+    uint64_t use = 0u;
+};
+
 class GsTextureCache {
 public:
     GsTextureCache(SdlGpuDevice &device, GsVram &vram, GsTargetCache &targets);
@@ -115,8 +126,10 @@ public:
     // `scale`, when given, receives the physical texels per GS texel of the
     // texture returned: above 1 for a replacement picture
     // (GsReplacementStore, Rogue Galaxy: added), 1 for the game's own.
+    // `levels`, when given, receives its mip level count (above 1 for a
+    // replacement with generated smaller levels).
     SDL_GPUTexture *acquire(const GSDrawState &state, std::string &error, const GsRegion *sampled = nullptr,
-                            uint32_t *scale = nullptr);
+                            uint32_t *scale = nullptr, uint32_t *levels = nullptr);
 
     // Why a range of local memory stopped being trustworthy. Kept apart
     // because the two have very different fixes: a host write really did
@@ -192,6 +205,23 @@ private:
         GsRegion hdRegion;
         uint64_t hdHash = 0u;
         uint64_t hdStamp = 0u;
+        // Its size on the GPU, whether it has smaller levels, and the
+        // acquire() that last returned it (least recently used goes first
+        // when the pack's budget is full).
+        uint64_t hdBytes = 0u;
+        uint32_t hdLevels = 1u;
+        uint64_t hdUse = 0u;
+        // A picture the store is still reading (or one waiting for this
+        // frame's upload allowance): the key it was asked for, the part it
+        // covers, and the store's completions() count when it was asked.
+        // The shared whole-texture picture it shows (m_hdPool), or none
+        // when `hd` is its own (a picture over part of the texture).
+        bool hdPooled = false;
+        PooledHd *hdPool = nullptr;
+        bool hdWait = false;
+        GsReplacementKey hdWaitKey;
+        GsRegion hdWaitPart;
+        uint64_t hdWaitSeen = 0u;
     };
 
     std::function<void(SDL_GPUTexture *)> m_beforeRewrite;
@@ -246,12 +276,25 @@ private:
     // picture. Local memory must hold the texture's current texels.
     void matchReplacement(const GsTextureKey &key, Entry &entry);
     void dropReplacement(Entry &entry);
+    // Binds a picture the store has ready: Bound, Deferred (this frame's
+    // upload allowance is spent; the entry keeps waiting) or Failed.
+    enum class BindResult { Bound, Deferred, Failed };
+    BindResult bindPicture(const GsTextureKey &key, Entry &entry, const GsRegion &part,
+                           const GsReplacementPicture &picture, const GsReplacementKey &wanted);
+    void attachPooled(Entry &entry, PooledHd &pooled, const GsRegion &part, uint64_t texels);
+    // A waiting entry asks the store again once a read has completed.
+    void retryWait(const GsTextureKey &key, Entry &entry);
+    // Drops the least recently used replacement textures until the pack's
+    // budget holds them (never `keep`).
+    void enforceHdBudget(const Entry *keep);
+    // Learn mode: hands a texture with no replacement to the store.
+    void learnTexture(const GsTextureKey &key, Entry &entry);
     // After update() rewrote `region` of the game's texture from m_staging:
     // keeps a bound picture in step (the texels outside its region are the
     // game's, upscaled) or looks it up again when its region changed.
     void followReplacement(const GsTextureKey &key, Entry &entry, const GsRegion &region, bool uploaded);
     bool uploadRect(SDL_GPUTexture *texture, uint32_t x, uint32_t y, uint32_t width, uint32_t height,
-                    const uint8_t *rgba, std::string &error);
+                    const uint8_t *rgba, std::string &error, uint32_t level = 0u);
     bool uploadRegion(SDL_GPUTexture *texture, const GsRegion &region, std::string &error);
     // Transfer buffers come from a pool guarded by the device's submission
     // serials: the movie path uploads dozens of regions a frame, and creating
@@ -298,6 +341,36 @@ private:
 
     SdlGpuUploadPool m_uploadPool;
     GsTextureCacheStats m_stats{};
+    // Replacement textures (Rogue Galaxy: added): their GPU bytes, the
+    // acquire() counter entries are stamped with, the upload allowance
+    // (bytes per 16 ms window) that spreads a scene's HD uploads over frames,
+    // and the identities learn mode has handed over.
+    uint64_t m_hdBytes = 0u;
+    uint64_t m_hdTextures = 0u;
+    // Whole-texture pictures on the GPU by key, shared by every entry that
+    // shows them: the game uploads different textures into the same pages
+    // frame after frame, and an entry going back to a picture it showed a
+    // moment ago must not upload it again. Released (least recently used
+    // first, unreferenced only) when the budget is full.
+    struct ReplacementKeyHash {
+        size_t operator()(const GsReplacementKey &key) const {
+            return static_cast<size_t>(key.texels ^ (key.clut * 0x9e3779b97f4a7c15ull) ^
+                                       (uint64_t(key.width) << 32u) ^ (uint64_t(key.height) << 48u) ^ key.psm);
+        }
+    };
+    std::unordered_map<GsReplacementKey, PooledHd, ReplacementKeyHash> m_hdPool;
+    uint64_t m_poolGeneration = 0u;
+    // Releases unreferenced pooled pictures, least recently used first,
+    // until the replacement bytes are at `target` (all of them: 0).
+    void releasePooled(uint64_t target);
+    // The store's files changed (reload, options): every pooled picture
+    // goes, entries showing one look theirs up again.
+    void flushPool();
+    uint64_t m_useTick = 0u;
+    int64_t m_hdWindowStart = 0;
+    uint64_t m_hdWindowBytes = 0u;
+    uint64_t m_hdUploadAllowance = 32ull << 20u;
+    std::unordered_map<uint64_t, bool> m_learnSeen;
 };
 
 } // namespace dq8::gfx
