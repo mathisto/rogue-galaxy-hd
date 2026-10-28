@@ -2193,13 +2193,18 @@ struct SdlGpuBackend::Impl {
                     const auto lastTexel = [](double lo, double hi) {
                         return static_cast<uint32_t>(std::max(std::ceil(hi) - 1.0, std::floor(lo)));
                     };
-                    if (clampState.wrapU == kWrapClamp && minU >= 0.0 && maxU <= textureWidth) {
+                    // REPEAT that does not wrap within the sprite is the
+                    // same as CLAMP there (UI sheets are drawn with REPEAT
+                    // too, and their next cell showed as dots at 4x).
+                    if ((clampState.wrapU == kWrapClamp || clampState.wrapU == kWrapRepeat) && minU >= 0.0 &&
+                        maxU <= textureWidth) {
                         clampState.wrapU = kWrapRegionClamp;
                         clampState.minU = static_cast<uint32_t>(std::floor(minU));
                         clampState.maxU = lastTexel(minU, maxU);
                         replacedClamp = true;
                     }
-                    if (clampState.wrapV == kWrapClamp && minV >= 0.0 && maxV <= textureHeight) {
+                    if ((clampState.wrapV == kWrapClamp || clampState.wrapV == kWrapRepeat) && minV >= 0.0 &&
+                        maxV <= textureHeight) {
                         clampState.wrapV = kWrapRegionClamp;
                         clampState.minV = static_cast<uint32_t>(std::floor(minV));
                         clampState.maxV = lastTexel(minV, maxV);

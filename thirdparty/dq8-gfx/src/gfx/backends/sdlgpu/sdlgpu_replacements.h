@@ -136,6 +136,7 @@ public:
     // The pack's files alone (the generated pictures stay): for comparing
     // with and without a pack in one session.
     void setFilesEnabled(bool on);
+    bool filesEnabled() const;
 
     // The pack folder, listed now on a worker (recursively) and again by
     // reload().

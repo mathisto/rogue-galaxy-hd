@@ -546,6 +546,10 @@ void GsReplacementStore::setFilesEnabled(bool on) {
     }
 }
 
+bool GsReplacementStore::filesEnabled() const {
+    return m_impl->filesEnabled.load();
+}
+
 bool GsReplacementStore::enabled() const {
     return m_impl->enabled.load(std::memory_order_acquire);
 }

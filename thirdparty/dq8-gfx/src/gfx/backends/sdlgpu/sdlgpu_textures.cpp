@@ -771,7 +771,8 @@ void GsTextureCache::enforceHdBudget(const Entry *keep) {
 
 void GsTextureCache::learnTexture(const GsTextureKey &key, Entry &entry) {
     GsReplacementStore &store = GsReplacementStore::instance();
-    if (!store.learning() || entry.identity.texels == 0u || entry.renderable || entry.hd ||
+    // Not while the pack is off: everything would look unmatched.
+    if (!store.learning() || !store.enabled() || !store.filesEnabled() || entry.identity.texels == 0u || entry.renderable || entry.hd ||
         !entry.unresolved.empty() || !entry.texture)
         return;
     const uint64_t name = entry.identity.texels ^ (entry.identity.clut * 0x9e3779b97f4a7c15ull) ^
