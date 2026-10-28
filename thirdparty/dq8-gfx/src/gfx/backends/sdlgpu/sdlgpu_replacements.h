@@ -163,9 +163,12 @@ public:
 
     // A picture the program draws, for the textures `keys` names. `maxScale`
     // bounds the scale it is drawn at (the render scale otherwise). Setting a
-    // name again replaces it.
+    // name again replaces it. `overFiles`: where a pack file stands for the
+    // texture, the generator draws over the file's picture instead (`out`
+    // arrives holding it, at the file's scale; it changes what it needs and
+    // keeps the size), so a pack's upscale keeps the program's additions.
     void setGenerated(const std::string &name, std::vector<GsReplacementKey> keys, GsReplacementGenerator generator,
-                      uint32_t maxScale = 4u);
+                      uint32_t maxScale = 4u, bool overFiles = false);
     void removeGenerated(const std::string &name);
     // Its art changed: drawn again at the next use.
     void refreshGenerated(const std::string &name);
@@ -185,6 +188,9 @@ public:
     // Whether a file (for this palette or any) or a generated picture
     // stands for the key: a map probe, before the cache expands anything.
     bool has(const GsReplacementKey &key) const;
+    // Whether a generated picture draws over this texture's file (it then
+    // needs the texture's own texels with the file's picture).
+    bool drawsOver(const GsReplacementKey &key) const;
     // The picture for a texture. Files are read on a worker: Pending until
     // then. `cutout`: the game's texels have only transparent and opaque
     // alpha (for GsCutoutAlpha::Threshold).

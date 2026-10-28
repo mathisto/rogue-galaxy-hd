@@ -147,6 +147,14 @@ struct GsReplacementStore::Impl {
         // Drawn pictures by texture and scale, until the art changes.
         std::map<std::pair<GsReplacementKey, uint32_t>, std::shared_ptr<const GsReplacementImage>, DrawnLess> drawn;
         bool failedLogged = false;
+        // Drawn over a pack file's picture too (setGenerated's overFiles):
+        // by texture, the file's picture it was drawn over and the result.
+        bool overFiles = false;
+        struct Over {
+            std::shared_ptr<const GsReplacementImage> base;
+            std::shared_ptr<const GsReplacementImage> drawn;
+        };
+        std::map<GsReplacementKey, Over, KeyLess> over;
     };
     std::map<std::string, Generated> generated;
 
@@ -645,14 +653,16 @@ void GsReplacementStore::setCutoutAlpha(GsCutoutAlpha mode) {
 }
 
 void GsReplacementStore::setGenerated(const std::string &name, std::vector<GsReplacementKey> keys,
-                                      GsReplacementGenerator generator, uint32_t maxScale) {
+                                      GsReplacementGenerator generator, uint32_t maxScale, bool overFiles) {
     {
         std::lock_guard lock(m_impl->mutex);
         Impl::Generated &entry = m_impl->generated[name];
         entry.keys = std::move(keys);
         entry.generator = std::move(generator);
         entry.maxScale = std::clamp<uint32_t>(maxScale, 1u, 8u);
+        entry.overFiles = overFiles;
         entry.drawn.clear();
+        entry.over.clear();
         entry.failedLogged = false;
         m_impl->rebuildShapesLocked();
     }
@@ -676,6 +686,7 @@ void GsReplacementStore::refreshGenerated(const std::string &name) {
         if (found == m_impl->generated.end())
             return;
         found->second.drawn.clear();
+        found->second.over.clear();
         found->second.failedLogged = false;
     }
     m_impl->bump();
@@ -728,6 +739,18 @@ bool GsReplacementStore::has(const GsReplacementKey &key) const {
     return false;
 }
 
+bool GsReplacementStore::drawsOver(const GsReplacementKey &key) const {
+    GsReplacementKey any = key;
+    any.clut = 0u;
+    std::lock_guard lock(m_impl->mutex);
+    for (const auto &[name, entry] : m_impl->generated)
+        if (entry.overFiles)
+            for (const GsReplacementKey &listed : entry.keys)
+                if (listed == key || listed == any)
+                    return true;
+    return false;
+}
+
 GsPictureStatus GsReplacementStore::picture(const GsReplacementKey &key, uint32_t renderScale, const uint8_t *native,
                                             GsReplacementPicture &out, bool cutout) {
     if (!enabled())
@@ -751,6 +774,47 @@ GsPictureStatus GsReplacementStore::picture(const GsReplacementKey &key, uint32_
             if (file.inLru && file.lru != m_impl->lru.begin())
                 m_impl->lru.splice(m_impl->lru.begin(), m_impl->lru, file.lru);
             out = {file.image, file.scale, std::filesystem::path(file.path).filename().string()};
+            // A generated picture that draws over files (the numerals over
+            // the pack's sheet) gets the file's picture as its canvas.
+            for (auto &[name, entry] : m_impl->generated) {
+                if (!entry.overFiles ||
+                    !std::any_of(entry.keys.begin(), entry.keys.end(), [&](const GsReplacementKey &listedKey) {
+                        return listedKey == key || listedKey == any;
+                    }))
+                    continue;
+                if (const auto done = entry.over.find(key);
+                    done != entry.over.end() && done->second.base == file.image) {
+                    out = {done->second.drawn, file.scale, name + " over " + out.label};
+                    return GsPictureStatus::Ready;
+                }
+                const std::shared_ptr<const GsReplacementImage> base = file.image;
+                const uint32_t scale = file.scale;
+                GsReplacementGenerator generator = entry.generator;
+                const std::string label = name;
+                lock.unlock();
+                auto image = std::make_shared<GsReplacementImage>();
+                image->width = base->width;
+                image->height = base->height;
+                image->rgba = base->rgba;
+                bool ok = false;
+                try {
+                    ok = generator && generator(scale, native, key.width, key.height, *image) &&
+                         image->width == base->width && image->height == base->height &&
+                         image->rgba.size() == base->rgba.size();
+                } catch (const std::exception &e) {
+                    std::fprintf(stderr, "[texrep] %s: %s\n", label.c_str(), e.what());
+                }
+                lock.lock();
+                const auto again = m_impl->generated.find(label);
+                if (!ok || again == m_impl->generated.end())
+                    return GsPictureStatus::Ready; // the file alone
+                std::fprintf(stderr, "[texrep] drew %s over %s\n", label.c_str(), out.label.c_str());
+                std::shared_ptr<const GsReplacementImage> shared = std::move(image);
+                again->second.over[key] = {base, shared};
+                out.image = shared;
+                out.label = label + " over " + out.label;
+                return GsPictureStatus::Ready;
+            }
             return GsPictureStatus::Ready;
         }
         if (file.state != Impl::State::Queued) {

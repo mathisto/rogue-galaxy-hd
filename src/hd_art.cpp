@@ -276,7 +276,7 @@ bool Font::drawPage(FontType type, uint32_t scale, const uint8_t *native, uint32
 }
 
 void Font::drawLabel(const std::string &text, float cx, float cy, float capHeight, float widthLimit,
-                     std::vector<float> &mask, int w, int h) const
+                     std::vector<float> &mask, int w, int h, float squeeze) const
 {
     const stbtt_fontinfo &info = m_info->font;
     int hx0 = 0, hy0 = 0, hx1 = 0, hy1 = 0;
@@ -296,7 +296,7 @@ void Font::drawLabel(const std::string &text, float cx, float cy, float capHeigh
             total += static_cast<float>(stbtt_GetGlyphKernAdvance(
                 &info, glyph, stbtt_FindGlyphIndex(&info, static_cast<unsigned char>(text[i + 1]))));
     }
-    float scaleX = scale;
+    float scaleX = scale * squeeze;
     if (total * scaleX > widthLimit && total > 0.0f)
         scaleX = widthLimit / total;
     float pen = cx - total * scaleX * 0.5f;
@@ -487,7 +487,305 @@ void blit(const Canvas &canvas, std::vector<uint8_t> &out, uint32_t outWidth, in
         }
 }
 
+struct Rgb
+{
+    float c[3] = {0.0f, 0.0f, 0.0f};
+};
+
+float luminance(const uint8_t *p)
+{
+    return 0.299f * p[0] + 0.587f * p[1] + 0.114f * p[2];
+}
+
+// A glyph's ink drawn by drawLabel centred on (0, 0) at `size` (its 'H'
+// height) and `squeeze` across: its size and its centre's offset.
+struct Ink
+{
+    bool any = false;
+    float w = 0.0f, h = 0.0f, dx = 0.0f, dy = 0.0f;
+};
+
+Ink measure(const Font &font, char c, float size, float squeeze)
+{
+    const int tw = static_cast<int>(std::ceil(size * 4.0f)) + 8, th = tw;
+    std::vector<float> trial(static_cast<size_t>(tw) * th, 0.0f);
+    font.drawLabel(std::string(1, c), tw * 0.5f, th * 0.5f, size, 1e9f, trial, tw, th, squeeze);
+    int x0 = tw, y0 = th, x1 = -1, y1 = -1;
+    for (int y = 0; y < th; ++y)
+        for (int x = 0; x < tw; ++x)
+            if (trial[static_cast<size_t>(y) * tw + x] > 0.02f)
+            {
+                x0 = std::min(x0, x);
+                x1 = std::max(x1, x);
+                y0 = std::min(y0, y);
+                y1 = std::max(y1, y);
+            }
+    Ink ink;
+    if (x1 < 0)
+        return ink;
+    ink.any = true;
+    ink.w = static_cast<float>(x1 - x0 + 1);
+    ink.h = static_cast<float>(y1 - y0 + 1);
+    ink.dx = (static_cast<float>(x0) + static_cast<float>(x1) + 1.0f) * 0.5f - tw * 0.5f;
+    ink.dy = (static_cast<float>(y0) + static_cast<float>(y1) + 1.0f) * 0.5f - th * 0.5f;
+    return ink;
+}
+
+// One size and squeeze for all of `chars`, so their ink fits maxW x maxH:
+// as tall as `cap` allows, condensed across down to 72% before it shrinks.
+void fitGlyphs(const Font &font, const char *chars, float cap, float maxW, float maxH, float &size, float &squeeze)
+{
+    float inkW = 0.0f, inkH = 0.0f;
+    for (const char *c = chars; *c; ++c)
+    {
+        const Ink ink = measure(font, *c, cap, 1.0f);
+        inkW = std::max(inkW, ink.w);
+        inkH = std::max(inkH, ink.h);
+    }
+    size = cap;
+    squeeze = 1.0f;
+    if (inkW <= 0.0f || inkH <= 0.0f)
+        return;
+    const float fitH = std::min(1.0f, maxH / inkH);
+    size = cap * fitH;
+    const float fitW = maxW / (inkW * fitH);
+    if (fitW < 1.0f)
+    {
+        squeeze = std::max(0.72f, fitW);
+        if (fitW < 0.72f)
+            size *= fitW / 0.72f;
+    }
+}
+
+// One glyph's coverage at `size` and `squeeze`, its ink centred on (cx, cy)
+// of a w x h mask, in physical pixels. `byCap`: centred vertically as a
+// capital would be (digits, so they share a baseline).
+void glyphMask(const Font &font, char c, float cx, float cy, float size, float squeeze, bool byCap,
+               std::vector<float> &mask, int w, int h)
+{
+    const Ink ink = measure(font, c, size, squeeze);
+    if (!ink.any)
+        return;
+    std::vector<float> drawn(static_cast<size_t>(w) * h, 0.0f);
+    font.drawLabel(std::string(1, c), cx - ink.dx, byCap ? cy : cy - ink.dy, size, 1e9f, drawn, w, h, squeeze);
+    for (size_t i = 0; i < mask.size(); ++i)
+        mask[i] = std::min(1.0f, mask[i] + drawn[i]);
+}
+
+// A cell redrawn: the glyph's mask with an outline around it, the outline in
+// `edge` (alpha `edgeAlpha`), the fill in `fill[y]` by native row from `top`.
+void paintGlyph(std::vector<uint8_t> &out, uint32_t outWidth, int left, int top, int w, int h,
+                const std::vector<float> &mask, float outlinePx, const Rgb &edgeColor, float edgeAlpha,
+                const std::vector<Rgb> &fill, int nativeTop, float scale)
+{
+    const std::vector<float> outline = grow(mask, w, h, outlinePx);
+    for (int y = 0; y < h; ++y)
+    {
+        // The fill's colour here, between the measured rows.
+        const float ny = (static_cast<float>(y) + 0.5f) / scale - 0.5f;
+        const int n = static_cast<int>(fill.size());
+        const float clamped = std::clamp(ny, 0.0f, static_cast<float>(n - 1));
+        const int i0 = static_cast<int>(clamped), i1 = std::min(i0 + 1, n - 1);
+        const float t = clamped - static_cast<float>(i0);
+        (void)nativeTop;
+        for (int x = 0; x < w; ++x)
+        {
+            const size_t at = static_cast<size_t>(y) * w + x;
+            const float aF = mask[at];
+            const float aO = outline[at] * edgeAlpha;
+            const float a = aF + aO * (1.0f - aF);
+            uint8_t *texel = out.data() + (static_cast<size_t>(top + y) * outWidth + left + x) * 4u;
+            if (a <= 0.0f)
+            {
+                texel[0] = static_cast<uint8_t>(edgeColor.c[0]);
+                texel[1] = static_cast<uint8_t>(edgeColor.c[1]);
+                texel[2] = static_cast<uint8_t>(edgeColor.c[2]);
+                texel[3] = 0u;
+                continue;
+            }
+            for (int c = 0; c < 3; ++c)
+            {
+                const float f = fill[i0].c[c] + (fill[i1].c[c] - fill[i0].c[c]) * t;
+                const float v = (f * aF + edgeColor.c[c] * aO * (1.0f - aF)) / a;
+                texel[c] = static_cast<uint8_t>(std::lround(std::clamp(v, 0.0f, 255.0f)));
+            }
+            texel[3] = gsAlpha(a);
+        }
+    }
+}
+
 } // namespace
+
+bool drawDigitRows(const Font &font, uint32_t scale, const uint8_t *native, uint32_t width, uint32_t height,
+                   const DigitRow *rows, size_t rowCount, std::vector<uint8_t> &out)
+{
+    if (scale == 0u || !native)
+        return false;
+    const uint32_t outWidth = width * scale;
+    if (out.size() != static_cast<size_t>(outWidth) * height * scale * 4u)
+        upscale(native, width, height, scale, out);
+    const float s = static_cast<float>(scale);
+    const auto at = [&](int x, int y) { return native + (static_cast<size_t>(y) * width + x) * 4u; };
+    for (size_t r = 0; r < rowCount; ++r)
+    {
+        const DigitRow &row = rows[r];
+        if (row.x < 0 || row.y < 0 || row.x + row.pitch * 10 > static_cast<int>(width) ||
+            row.y + row.band > static_cast<int>(height))
+            continue;
+        // The digits' ink box in their cells, and their colours.
+        int ix0 = row.pitch, ix1 = -1, iy0 = row.band, iy1 = -1;
+        float lo = 1e9f, hi = -1e9f;
+        for (int d = 0; d < 10; ++d)
+            for (int y = 0; y < row.band; ++y)
+                for (int x = 0; x < row.pitch; ++x)
+                {
+                    const uint8_t *p = at(row.x + d * row.pitch + x, row.y + y);
+                    if (p[3] <= 8u)
+                        continue;
+                    ix0 = std::min(ix0, x);
+                    ix1 = std::max(ix1, x);
+                    iy0 = std::min(iy0, y);
+                    iy1 = std::max(iy1, y);
+                    if (p[3] >= 0x40u)
+                    {
+                        lo = std::min(lo, luminance(p));
+                        hi = std::max(hi, luminance(p));
+                    }
+                }
+        if (ix1 < 0 || hi < lo)
+            continue;
+        Rgb edgeColor;
+        float edgeAlpha = 0.0f;
+        int edgeCount = 0;
+        std::vector<Rgb> fill(static_cast<size_t>(row.band));
+        std::vector<int> fillCount(static_cast<size_t>(row.band), 0);
+        const float darkLimit = lo + 0.3f * (hi - lo), lightLimit = lo + 0.6f * (hi - lo);
+        for (int d = 0; d < 10; ++d)
+            for (int y = 0; y < row.band; ++y)
+                for (int x = 0; x < row.pitch; ++x)
+                {
+                    const uint8_t *p = at(row.x + d * row.pitch + x, row.y + y);
+                    if (p[3] < 0x40u)
+                        continue;
+                    const float l = luminance(p);
+                    if (l <= darkLimit)
+                    {
+                        for (int c = 0; c < 3; ++c)
+                            edgeColor.c[c] += p[c];
+                        edgeAlpha += std::min(1.0f, p[3] / 128.0f);
+                        ++edgeCount;
+                    }
+                    else if (l >= lightLimit)
+                    {
+                        for (int c = 0; c < 3; ++c)
+                            fill[y].c[c] += p[c];
+                        ++fillCount[y];
+                    }
+                }
+        if (edgeCount == 0)
+            continue;
+        for (int c = 0; c < 3; ++c)
+            edgeColor.c[c] /= static_cast<float>(edgeCount);
+        edgeAlpha /= static_cast<float>(edgeCount);
+        // Rows with no light texels take the nearest measured one.
+        int firstMeasured = -1;
+        for (int y = 0; y < row.band; ++y)
+            if (fillCount[y] > 0)
+            {
+                for (int c = 0; c < 3; ++c)
+                    fill[y].c[c] /= static_cast<float>(fillCount[y]);
+                if (firstMeasured < 0)
+                    firstMeasured = y;
+            }
+        if (firstMeasured < 0)
+            continue;
+        for (int y = 0; y < row.band; ++y)
+            if (fillCount[y] == 0)
+            {
+                int best = firstMeasured;
+                for (int k = 0; k < row.band; ++k)
+                    if (fillCount[k] > 0 && std::abs(k - y) < std::abs(best - y))
+                        best = k;
+                fill[y] = fill[best];
+            }
+
+        // The game's outline is a texel wide.
+        const float outlinePx = 1.0f * s;
+        const float inkW = static_cast<float>(ix1 - ix0 + 1) * s, inkH = static_cast<float>(iy1 - iy0 + 1) * s;
+        const float cap = inkH - 2.0f * outlinePx;
+        const float cy = (static_cast<float>(iy0) + static_cast<float>(iy1) + 1.0f) * 0.5f * s;
+        const int cellW = row.pitch * static_cast<int>(scale), bandH = row.band * static_cast<int>(scale);
+        float size = cap, squeeze = 1.0f;
+        fitGlyphs(font, "0123456789", cap, inkW - 2.0f * outlinePx - row.slant * cap, cap, size, squeeze);
+        for (int d = 0; d < 10; ++d)
+        {
+            std::vector<float> mask(static_cast<size_t>(cellW) * bandH, 0.0f);
+            const float cx = (static_cast<float>(ix0) + static_cast<float>(ix1) + 1.0f) * 0.5f * s;
+            glyphMask(font, static_cast<char>('0' + d), cx, cy, size, squeeze, true, mask, cellW, bandH);
+            if (row.slant != 0.0f)
+            {
+                // Leaned like the game's italic digits, about their middle.
+                std::vector<float> leaned(mask.size(), 0.0f);
+                for (int y = 0; y < bandH; ++y)
+                {
+                    const float shift = row.slant * (cy - (static_cast<float>(y) + 0.5f));
+                    for (int x = 0; x < cellW; ++x)
+                    {
+                        const float sx = static_cast<float>(x) - shift;
+                        const int x0 = static_cast<int>(std::floor(sx));
+                        const float t = sx - static_cast<float>(x0);
+                        const auto sample = [&](int at) {
+                            return at < 0 || at >= cellW ? 0.0f : mask[static_cast<size_t>(y) * cellW + at];
+                        };
+                        leaned[static_cast<size_t>(y) * cellW + x] = sample(x0) * (1.0f - t) + sample(x0 + 1) * t;
+                    }
+                }
+                mask.swap(leaned);
+            }
+            paintGlyph(out, outWidth, (row.x + d * row.pitch) * static_cast<int>(scale), row.y * static_cast<int>(scale),
+                       cellW, bandH, mask, outlinePx, edgeColor, edgeAlpha, fill, row.y, s);
+        }
+        // The glyphs after the digits, each found by its ink.
+        int x = row.x + row.pitch * 10;
+        for (const char *extra = row.extra; extra && *extra; ++extra)
+        {
+            const auto inked = [&](int column) {
+                for (int y = 0; y < row.band; ++y)
+                    if (at(column, row.y + y)[3] > 8u)
+                        return true;
+                return false;
+            };
+            while (x < static_cast<int>(width) && !inked(x))
+                ++x;
+            const int a = x;
+            while (x < static_cast<int>(width) && inked(x))
+                ++x;
+            const int b = x; // one past
+            if (a >= static_cast<int>(width))
+                break;
+            int gy0 = row.band, gy1 = -1;
+            for (int column = a; column < b; ++column)
+                for (int y = 0; y < row.band; ++y)
+                    if (at(column, row.y + y)[3] > 8u)
+                    {
+                        gy0 = std::min(gy0, y);
+                        gy1 = std::max(gy1, y);
+                    }
+            const int boxW = (b - a) * static_cast<int>(scale);
+            std::vector<float> mask(static_cast<size_t>(boxW) * bandH, 0.0f);
+            const float gx = boxW * 0.5f;
+            const float gcy = (static_cast<float>(gy0) + static_cast<float>(gy1) + 1.0f) * 0.5f * s;
+            const char one[2] = {*extra, 0};
+            float extraSize = size, extraSqueeze = squeeze;
+            fitGlyphs(font, one, size, static_cast<float>(boxW) - 2.0f * outlinePx,
+                      static_cast<float>(gy1 - gy0 + 1) * s - 2.0f * outlinePx, extraSize, extraSqueeze);
+            glyphMask(font, *extra, gx, gcy, extraSize, extraSqueeze, false, mask, boxW, bandH);
+            paintGlyph(out, outWidth, a * static_cast<int>(scale), row.y * static_cast<int>(scale), boxW, bandH, mask,
+                       outlinePx, edgeColor, edgeAlpha, fill, row.y, s);
+        }
+    }
+    return true;
+}
 
 bool drawXboxIcons(const Font &labels, uint32_t scale, const uint8_t *native, uint32_t width, uint32_t height,
                    std::vector<uint8_t> &out)

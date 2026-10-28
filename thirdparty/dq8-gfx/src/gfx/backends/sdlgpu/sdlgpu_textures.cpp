@@ -563,7 +563,14 @@ void GsTextureCache::retryWait(const GsTextureKey &key, Entry &entry) {
     }
     const uint64_t seen = store.completions();
     GsReplacementPicture picture;
-    const GsPictureStatus status = store.picture(entry.hdWaitKey, m_targets.scale(), nullptr, picture);
+    // The part's own texels again, for a picture drawn over the file's.
+    std::vector<uint8_t> native;
+    if (store.drawsOver(entry.hdWaitKey)) {
+        expand(key, entry.hdWaitPart);
+        native = m_staging;
+    }
+    const GsPictureStatus status =
+        store.picture(entry.hdWaitKey, m_targets.scale(), native.empty() ? nullptr : native.data(), picture);
     if (status == GsPictureStatus::Pending) {
         entry.hdWaitSeen = seen;
         return;

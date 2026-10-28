@@ -94,7 +94,7 @@ public:
     // physical pixels, `height` its cap height there: the coverage, added to
     // `mask` (w x h).
     void drawLabel(const std::string &text, float cx, float cy, float capHeight, float widthLimit,
-                   std::vector<float> &mask, int w, int h) const;
+                   std::vector<float> &mask, int w, int h, float squeeze = 1.0f) const;
 
     ~Font();
 
@@ -116,6 +116,30 @@ private:
 // sheet is the game's, upscaled. `labels` draws the letters.
 bool drawXboxIcons(const Font &labels, uint32_t scale, const uint8_t *native, uint32_t width, uint32_t height,
                    std::vector<uint8_t> &out);
+
+// A row of digit cells in a menu sprite sheet (UiDrawSpritePixelMaybe,
+// 0x292300, draws digit d from (x + pitch * d, y)): `band` rows from `y`
+// hold the digits' ink and nothing else; `extra` names the glyphs drawn after
+// the ten digits ("/:", left to right, each found by its ink), which are
+// redrawn too.
+struct DigitRow
+{
+    int x;
+    int y;
+    int band;
+    int pitch;
+    const char *extra;
+    // Italic digits: how far the top leans right, per pixel of height.
+    float slant = 0.0f;
+};
+
+// The digit rows of a sheet redrawn with `font`'s digits: each in the box the
+// game's digit inked (so widths and centring stay), with the game's outline
+// colour and width and its fill's colours from top to bottom, measured from
+// `native`. `out` holds the picture to draw over (a pack's upscale, scale
+// times the sheet) or is empty, then the game's texels upscaled are.
+bool drawDigitRows(const Font &font, uint32_t scale, const uint8_t *native, uint32_t width, uint32_t height,
+                   const DigitRow *rows, size_t rowCount, std::vector<uint8_t> &out);
 
 // The game's texels upscaled `scale` times, nearest.
 void upscale(const uint8_t *native, uint32_t width, uint32_t height, uint32_t scale, std::vector<uint8_t> &out);

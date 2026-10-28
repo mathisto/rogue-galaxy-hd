@@ -70,6 +70,36 @@ constexpr Page kFontPages[] = {
 // for finding pages not listed above.
 constexpr uint32_t kProbePsms[] = {kPsmT4, kPsmT4HL, kPsmT4HH};
 constexpr uint64_t kGaijiTexels = 0xef8062d131c0ea57ull; // gaiji2, 256x256 T8, both packs
+// The sheets whose digit rows UiDrawSpritePixelMaybe (0x292300) draws numbers
+// from (research 11), by their texels as RG_TEXTURE_LOG names them, any
+// palette; each row's cells, measured on the exported sheets. A second key is
+// the copy with Japanese labels (menu_static_img2_en.pac), same layout.
+struct DigitSheet
+{
+    uint64_t texels[2];
+    uint32_t psm;
+    uint32_t width, height;
+    const hdart::DigitRow *rows;
+    size_t rowCount;
+};
+// topmenu_02a: play time, item counts, levels, stats (grey, blue, small).
+constexpr hdart::DigitRow kTopMenuRows[] = {
+    {0, 0, 16, 12, "/:"},
+    {0, 16, 16, 12, "/:"},
+    {0, 32, 14, 10, "/"},
+};
+// Itm_05: the money in the item menu and shops, italic.
+constexpr hdart::DigitRow kItemMoneyRows[] = {{0, 105, 22, 14, "", 0.25f}};
+// TP_save02: the file numbers of the save and load screens.
+constexpr hdart::DigitRow kSaveFileRows[] = {{0, 0, 18, 14, ""}};
+// TP_top_02a: the levels on the save and load screens.
+constexpr hdart::DigitRow kSaveLevelRows[] = {{0, 0, 14, 12, ""}};
+constexpr DigitSheet kDigitSheets[] = {
+    {{0x5fd0e1dbd5ef4f1cull, 0x1f1ea76d537d92ceull}, kPsmT4, 256u, 128u, kTopMenuRows, std::size(kTopMenuRows)},
+    {{0x394b14f4a10e95a0ull, 0x6a9f43a50179bff6ull}, kPsmT8, 256u, 128u, kItemMoneyRows, std::size(kItemMoneyRows)},
+    {{0x4919d4a889d9698dull, 0u}, kPsmT8, 256u, 128u, kSaveFileRows, std::size(kSaveFileRows)},
+    {{0x68940e5ee5d6687bull, 0u}, kPsmT8, 256u, 64u, kSaveLevelRows, std::size(kSaveLevelRows)},
+};
 
 std::mutex g_mutex;
 uint8_t *g_rdram = nullptr;
@@ -217,6 +247,31 @@ void apply()
                                });
         }
         writeWidths(g_font->widths());
+        // The menus' numerals (play time, money, counts, levels, stats) are
+        // digit strips in menu sheets, not text: their digit rows redrawn in
+        // the same font, over a pack's upscale of the sheet when there is one.
+        std::shared_ptr<const hdart::Font> font = g_font;
+        for (size_t index = 0; index < std::size(kDigitSheets); ++index)
+        {
+            const DigitSheet &sheet = kDigitSheets[index];
+            std::vector<GsReplacementKey> keys;
+            for (const uint64_t texels : sheet.texels)
+                if (texels)
+                    keys.push_back({texels, 0u, sheet.psm, sheet.width, sheet.height});
+            store.setGenerated(
+                "numerals-" + std::to_string(index), std::move(keys),
+                [font, &sheet](uint32_t scale, const uint8_t *native, uint32_t width, uint32_t height,
+                               GsReplacementImage &out) {
+                    if (out.rgba.empty())
+                    {
+                        out.width = width * scale;
+                        out.height = height * scale;
+                    }
+                    return hdart::drawDigitRows(*font, scale, native, width, height, sheet.rows, sheet.rowCount,
+                                                out.rgba);
+                },
+                8u, true);
+        }
         g_fontShown = true;
         std::printf("[font] text: %s\n", g_fontDescription.c_str());
     }
@@ -225,6 +280,10 @@ void apply()
         for (size_t index = 0; index < std::size(kFontPages); ++index)
         {
             store.removeGenerated("font-" + std::to_string(index));
+        }
+        for (size_t index = 0; index < std::size(kDigitSheets); ++index)
+        {
+            store.removeGenerated("numerals-" + std::to_string(index));
         }
         writeWidths(g_original);
         g_fontShown = false;
