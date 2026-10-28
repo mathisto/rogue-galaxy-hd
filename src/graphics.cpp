@@ -711,7 +711,8 @@ Setup::Setup(PS2Runtime &runtime)
             std::fprintf(stderr, "[rg] could not read %s; using default settings\n", settingsPath.c_str());
         }
         uint32_t runScale = settings.resolutionScale;
-        if (const std::string scale = env("RG_GS_SCALE", ""); !scale.empty())
+        // "auto": the menu's Auto for this run (the overlay follows the window).
+        if (const std::string scale = env("RG_GS_SCALE", ""); !scale.empty() && scale != "auto")
         {
             runScale = std::clamp(static_cast<uint32_t>(std::strtoul(scale.c_str(), nullptr, 10)), 1u, 8u);
         }

@@ -228,6 +228,16 @@ private:
     // Asks for an internal resolution and saves it. Asking for the active one
     // replaces a request still queued, which cancels it.
     void requestScale(uint32_t scale);
+    // Internal resolution Auto (Rogue Galaxy: added): the scale for the
+    // window's height now, and asking for it when it changed (resize,
+    // another monitor, fullscreen), with a toast. RG_GS_SCALE=auto forces it.
+    uint32_t autoScaleFor(int heightPixels) const;
+    void updateAutoScale();
+    void setAutoScale(bool on);
+    bool m_autoForced = false;
+    int m_autoHeight = -1;
+    uint32_t m_autoAsked = 0u;
+    double m_autoChangedAt = 0.0;
     bool pausing() const;
     bool canPause() const { return static_cast<bool>(m_host.setPaused); }
     bool canChangeSpeed() const { return static_cast<bool>(m_host.setSpeed); }

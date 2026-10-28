@@ -208,18 +208,44 @@ void Overlay::drawDisplayPage() {
                    "Experimental");
         const uint32_t active = m_backend.activeResolutionScale();
         const uint32_t shown = m_pendingScale != 0u ? m_pendingScale : active;
-        char preview[96];
-        std::snprintf(preview, sizeof(preview), "%u%s   %u %s %u%s", shown, kTimes, 512u * shown, kTimes, 448u * shown,
+        const bool automatic = m_settings.autoScale || m_autoForced;
+        char preview[128];
+        std::snprintf(preview, sizeof(preview), "%s%u%s   %u %s %u%s", automatic ? "Auto: " : "", shown, kTimes,
+                      512u * shown, kTimes, 448u * shown,
                       m_pendingScale == 0u ? "" : pausing() ? "   when the game resumes" : "   applying...");
         if (ImGui::BeginCombo("##scale", preview)) {
+            // Rogue Galaxy: added. From the window's height in pixels.
+            if (ImGui::Selectable("Auto   from the window's height", automatic))
+                setAutoScale(true);
             for (uint32_t scale = 1u; scale <= 8u; ++scale) {
                 char item[64];
                 std::snprintf(item, sizeof(item), "%u%s   %u %s %u%s", scale, kTimes, 512u * scale, kTimes,
                               448u * scale, scale == 1u ? "   (PS2)" : "");
-                if (ImGui::Selectable(item, scale == shown))
+                if (ImGui::Selectable(item, !automatic && scale == shown))
                     requestScale(scale);
             }
             ImGui::EndCombo();
+        }
+        if (automatic) {
+            settingRow("Auto: oversampling",
+                       "Lines drawn for each line of the window: 1.0 draws at least the window's height (1440 lines "
+                       "take 4x, 1792 lines), 1.25 and 1.5 more, smoother and slower. A wide window costs more at "
+                       "the same height.");
+            static constexpr const char *kOversample[] = {"1.0", "1.25", "1.5"};
+            int oversample = m_settings.autoOversample >= 150u ? 2 : m_settings.autoOversample >= 125u ? 1 : 0;
+            if (segmented("oversample", &oversample, kOversample, 3)) {
+                m_settings.autoOversample = oversample == 2 ? 150u : oversample == 1 ? 125u : 100u;
+                m_autoHeight = -1;
+                markDirty();
+            }
+            settingRow("Auto: at most", "The highest internal resolution Auto picks.");
+            static constexpr const char *kCaps[] = {"2x", "3x", "4x", "5x", "6x", "7x", "8x"};
+            int cap = static_cast<int>(std::clamp(m_settings.autoCap, 2u, 8u)) - 2;
+            if (segmented("autocap", &cap, kCaps, 7)) {
+                m_settings.autoCap = static_cast<uint32_t>(cap + 2);
+                m_autoHeight = -1;
+                markDirty();
+            }
         }
 
         const char *aspectHelp = "";

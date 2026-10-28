@@ -13,6 +13,8 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <ctime>
 #include <filesystem>
 
@@ -72,6 +74,9 @@ double Overlay::now() const {
 
 bool Overlay::initialize(SDL_Window *window, SDL_GPUTextureFormat format, std::string &error) {
     m_window = window;
+    // RG_GS_SCALE=auto: Auto for this run, not saved (Rogue Galaxy: added).
+    if (const char *scale = std::getenv("RG_GS_SCALE"); scale && std::strcmp(scale, "auto") == 0)
+        m_autoForced = true;
     IMGUI_CHECKVERSION();
     m_context = ImGui::CreateContext();
     ImGui::SetCurrentContext(m_context);
@@ -584,6 +589,7 @@ void Overlay::drawFrame() {
     }
     collectSavedScreenshots();
     sampleFrameRate();
+    updateAutoScale();
     if (m_pendingScale != 0u) {
         // A new scale is applied as a frame is prepared, and a paused game
         // prepares none, so the wait only counts while it runs.
@@ -1137,8 +1143,61 @@ void Overlay::requestScale(uint32_t scale) {
     m_backend.requestResolutionScale(scale);
     m_pendingScale = scale != m_backend.activeResolutionScale() ? scale : 0u;
     m_pendingScaleSince = now();
+    // A manual choice ends Auto.
     m_settings.resolutionScale = scale;
+    m_settings.autoScale = false;
+    m_autoForced = false;
+    m_autoHeight = -1;
+    m_autoAsked = 0u;
     markDirty();
+}
+
+uint32_t Overlay::autoScaleFor(int heightPixels) const {
+    const double lines = double(std::max(heightPixels, 1)) * double(m_settings.autoOversample) / 100.0;
+    const uint32_t scale = static_cast<uint32_t>(std::ceil(lines / 448.0 - 1e-6));
+    return std::clamp(scale, 1u, std::clamp(m_settings.autoCap, 1u, 8u));
+}
+
+void Overlay::setAutoScale(bool on) {
+    m_settings.autoScale = on;
+    m_autoHeight = -1; // evaluated at the next frame
+    m_autoAsked = 0u;
+    if (!on) {
+        m_autoForced = false;
+        requestScale(m_settings.resolutionScale);
+        return;
+    }
+    markDirty();
+}
+
+void Overlay::updateAutoScale() {
+    if (!(m_settings.autoScale || m_autoForced) || !m_window)
+        return;
+    int width = 0, height = 0;
+    if (!SDL_GetWindowSizeInPixels(m_window, &width, &height) || height <= 0)
+        return;
+    // A drag-resize changes the height every frame: wait until it settles.
+    if (height != m_autoHeight) {
+        m_autoHeight = height;
+        m_autoChangedAt = now();
+        return;
+    }
+    if (now() - m_autoChangedAt < 0.5)
+        return;
+    const uint32_t scale = autoScaleFor(height);
+    if (scale == m_autoAsked && m_autoAsked != 0u)
+        return;
+    m_autoAsked = scale;
+    if (scale != m_backend.activeResolutionScale()) {
+        m_backend.requestResolutionScale(scale);
+        m_pendingScale = scale;
+        m_pendingScaleSince = now();
+    }
+    char text[96];
+    std::snprintf(text, sizeof(text), "Auto: %ux, %u lines for %d", scale, 448u * scale, height);
+    std::fprintf(stderr, "[ui] internal resolution %s (oversample %u%%, cap %ux)\n", text,
+                 m_settings.autoOversample, m_settings.autoCap);
+    notify(text, Icon::Info);
 }
 
 SDL_GamepadType Overlay::displayedControllerType() const {

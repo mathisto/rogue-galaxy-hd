@@ -29,7 +29,13 @@ struct Settings {
     // SDL's submission lock, which the GS worker then waits on. The line blend
     // stays as the game draws it (the option only acts on DQ8's pattern).
     gfx::SdlGpuDisplayOptions display{.presentMode = SDL_GPU_PRESENTMODE_MAILBOX};
-    uint32_t resolutionScale = 2u;
+    uint32_t resolutionScale = 2u; // the manual choice
+    // Internal resolution Auto (Rogue Galaxy: added): the scale from the
+    // window's height in pixels, ceil(height / 448 * oversample%), at most
+    // autoCap. resolutionScale stays the manual choice for going back.
+    bool autoScale = false;
+    uint32_t autoOversample = 100u; // percent: 100, 125, 150
+    uint32_t autoCap = 6u;
 
     // Sound
     int volume = 100; // percent

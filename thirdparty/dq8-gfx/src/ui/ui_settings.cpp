@@ -102,7 +102,15 @@ void apply(Settings &s, const std::string &section, const std::string &key, cons
             s.windowPlaced = true;
         }
     } else if (section == "display") {
-        if (key == "scale") parseNumber(value, s.resolutionScale, 1u, 8u);
+        if (key == "scale") {
+            // "auto": from the window's height (Rogue Galaxy: added).
+            s.autoScale = value == "auto";
+            if (!s.autoScale)
+                parseNumber(value, s.resolutionScale, 1u, 8u);
+        }
+        else if (key == "manual_scale") parseNumber(value, s.resolutionScale, 1u, 8u);
+        else if (key == "auto_oversample") parseNumber(value, s.autoOversample, 100u, 150u);
+        else if (key == "auto_cap") parseNumber(value, s.autoCap, 1u, 8u);
         else if (key == "aspect") parseNamed(kAspects, value, s.display.aspect);
         else if (key == "filter") parseNamed(kFilters, value, s.display.filter);
         else if (key == "sides") parseNamed(kSides, value, s.display.sides);
@@ -175,7 +183,9 @@ std::string serializeSettings(const Settings &s) {
         << "\nwidth = " << s.windowWidth << "\nheight = " << s.windowHeight << "\n";
     if (s.windowPlaced)
         out << "x = " << s.windowX << "\ny = " << s.windowY << "\n";
-    out << "\n[display]\nscale = " << s.resolutionScale << "\naspect = " << nameOf(kAspects, s.display.aspect)
+    out << "\n[display]\nscale = " << (s.autoScale ? std::string("auto") : std::to_string(s.resolutionScale))
+        << "\nmanual_scale = " << s.resolutionScale << "\nauto_oversample = " << s.autoOversample
+        << "\nauto_cap = " << s.autoCap << "\naspect = " << nameOf(kAspects, s.display.aspect)
         << "\nfilter = " << nameOf(kFilters, s.display.filter)
         << "\nsides = " << nameOf(kSides, s.display.sides)
         << "\ninteger_scale = " << flag(s.display.integerScale)
