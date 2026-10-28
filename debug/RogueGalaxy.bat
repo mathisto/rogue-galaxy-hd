@@ -33,8 +33,15 @@ rem backend's counters), so an F9 mark can be put next to that second.
 if not defined DQ8_GFX_STATS_EVERY set DQ8_GFX_STATS_EVERY=60
 rem Keeps other programs' Vulkan layers (OBS's capture hook, ReShade, the
 rem Steam, GOG and Epic overlays) out of the game: they load into every
-rem Vulkan process and sit on its presents. Remove the line to allow them.
-set VK_LOADER_LAYERS_DISABLE=~implicit~
+rem Vulkan process and sit on its presents. set RG_ALLOW_VK_LAYERS=1 (here or
+rem in Windows) lets them in, for ReShade or RenderDoc
+rem (docs\GRAPHICS-UPSCALING.md).
+if "%RG_ALLOW_VK_LAYERS%"=="" set RG_ALLOW_VK_LAYERS=0
+if "%RG_ALLOW_VK_LAYERS%"=="0" (
+    if not defined VK_LOADER_LAYERS_DISABLE set VK_LOADER_LAYERS_DISABLE=~implicit~
+) else (
+    set VK_LOADER_LAYERS_DISABLE=
+)
 
 echo Rogue Galaxy is running. Close the game window to quit.
 rem The previous run's log survives one more run as last-run.prev.log.

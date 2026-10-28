@@ -67,6 +67,21 @@ namespace dq8::gfx {
 
 namespace {
 
+// Debug labels and groups in the command buffers, for RenderDoc captures
+// (Rogue Galaxy: added): with RG_ALLOW_VK_LAYERS=1 (the layers are let in)
+// or DQ8_GFX_DEBUG_LABELS=1. Off otherwise; they cost a driver call each.
+bool gpuDebugLabels() {
+    static const bool on = [] {
+        for (const char *name : {"DQ8_GFX_DEBUG_LABELS", "RG_ALLOW_VK_LAYERS"}) {
+            const char *value = std::getenv(name);
+            if (value && *value && *value != '0')
+                return true;
+        }
+        return false;
+    }();
+    return on;
+}
+
 // DQ8_GFX_SCREENSHOT_DIR makes the runtime latch CPU-composed pixels, so the
 // paths that would skip or discard that compose have to stand down.
 bool gsScreenshotEnabled() {
@@ -2521,6 +2536,12 @@ struct SdlGpuBackend::Impl {
                     batch.depth->undefined = false;
                 }
 
+                if (gpuDebugLabels()) {
+                    char label[96];
+                    std::snprintf(label, sizeof(label), "GS draws: target %05x %ux%u%s", batch.color->base,
+                                  batch.color->bufferWidth, batch.color->height, batch.depth ? " + depth" : "");
+                    SDL_InsertGPUDebugLabel(commands, label);
+                }
                 pass = SDL_BeginGPURenderPass(commands, &colorInfo, 1u,
                                               batch.depth ? &depthInfo : nullptr);
                 if (!pass) {
@@ -3616,8 +3637,12 @@ struct SdlGpuBackend::Impl {
             const SdlGpuRect picture = pictureRegion(*slot);
             rect = sdlGpuDisplayRect(displayOptions, picture.width, picture.height, swapchainWidth,
                                      swapchainHeight, gameWidescreen());
+            if (gpuDebugLabels())
+                SDL_PushGPUDebugGroup(commands, "Present: sides, picture (scale filter, FSR, downscale)");
             const bool sides = drawSides(commands, *slot, target, swapchainWidth, swapchainHeight, rect);
             drawPicture(commands, *slot, target, rect, sides ? SDL_GPU_LOADOP_LOAD : SDL_GPU_LOADOP_CLEAR);
+            if (gpuDebugLabels())
+                SDL_PopGPUDebugGroup(commands);
         } else {
             clearTarget(commands, target);
         }

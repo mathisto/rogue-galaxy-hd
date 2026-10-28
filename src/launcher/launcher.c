@@ -187,12 +187,23 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous, LPSTR commandLine, in
 
     // RogueGalaxy.bat's variables (it says what they do): the [gfx] line a
     // second unless one is set already, and other programs' Vulkan layers
-    // kept out of the game.
+    // kept out of the game, unless RG_ALLOW_VK_LAYERS=1 lets them in (ReShade,
+    // RenderDoc; docs/GRAPHICS-UPSCALING.md) or the player set the loader's
+    // variable already.
     if (GetEnvironmentVariableW(L"DQ8_GFX_STATS_EVERY", NULL, 0) == 0)
     {
         SetEnvironmentVariableW(L"DQ8_GFX_STATS_EVERY", L"60");
     }
-    SetEnvironmentVariableW(L"VK_LOADER_LAYERS_DISABLE", L"~implicit~");
+    wchar_t allow[8] = L"";
+    GetEnvironmentVariableW(L"RG_ALLOW_VK_LAYERS", allow, 8);
+    if (allow[0] != L'\0' && allow[0] != L'0')
+    {
+        SetEnvironmentVariableW(L"VK_LOADER_LAYERS_DISABLE", NULL);
+    }
+    else if (GetEnvironmentVariableW(L"VK_LOADER_LAYERS_DISABLE", NULL, 0) == 0)
+    {
+        SetEnvironmentVariableW(L"VK_LOADER_LAYERS_DISABLE", L"~implicit~");
+    }
 
     // The previous run's log survives one more run (there may be none).
     CopyFileW(kLog, kPreviousLog, FALSE);

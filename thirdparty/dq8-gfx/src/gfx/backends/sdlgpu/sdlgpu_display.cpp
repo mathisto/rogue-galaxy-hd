@@ -14,8 +14,24 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 
 namespace dq8::gfx {
+
+namespace {
+// As sdlgpu_backend.cpp's: labels for RenderDoc when the layers are let in.
+bool debugLabels() {
+    static const bool on = [] {
+        for (const char *name : {"DQ8_GFX_DEBUG_LABELS", "RG_ALLOW_VK_LAYERS"}) {
+            const char *value = std::getenv(name);
+            if (value && *value && *value != '0')
+                return true;
+        }
+        return false;
+    }();
+    return on;
+}
+} // namespace
 
 double sdlGpuWideAspect(uint32_t windowWidth, uint32_t windowHeight) {
     const double window = double(std::max(windowWidth, 1u)) / double(std::max(windowHeight, 1u));
@@ -146,6 +162,8 @@ bool SdlGpuDevice::composeDisplay(SDL_GPUTexture *circuit1, SDL_GPUTexture *circ
     target.texture = destination;
     target.load_op = SDL_GPU_LOADOP_DONT_CARE;
     target.store_op = SDL_GPU_STOREOP_STORE;
+    if (debugLabels())
+        SDL_InsertGPUDebugLabel(commands, "Display: the GS's two read circuits composed (PMODE)");
     SDL_GPURenderPass *pass = SDL_BeginGPURenderPass(commands, &target, 1u, nullptr);
     if (!pass) {
         error = std::string("SDL_BeginGPURenderPass(display): ") + SDL_GetError();
@@ -320,6 +338,8 @@ bool runPresentPass(SDL_GPUCommandBuffer *commands, SDL_GPUGraphicsPipeline *pip
     targetInfo.load_op = clear ? SDL_GPU_LOADOP_CLEAR : SDL_GPU_LOADOP_LOAD;
     targetInfo.clear_color = SDL_FColor{0.0f, 0.0f, 0.0f, 1.0f};
     targetInfo.store_op = SDL_GPU_STOREOP_STORE;
+    if (debugLabels())
+        SDL_InsertGPUDebugLabel(commands, (std::string("Present pass: ") + name).c_str());
     SDL_GPURenderPass *pass = SDL_BeginGPURenderPass(commands, &targetInfo, 1u, nullptr);
     if (!pass) {
         error = std::string("SDL_BeginGPURenderPass(") + name + "): " + SDL_GetError();
