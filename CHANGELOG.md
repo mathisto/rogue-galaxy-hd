@@ -8,6 +8,12 @@
   this (F1 > Interface > Pause and speed turns it off).
 - Fast-forward speeds 1.5x and 8x besides 2x, 3x, 4x and Max; movies keep
   normal speed so their sound stays in step.
+- Display: an FSR scaling filter (AMD FSR 1's upscale, for a window larger
+  than the internal resolution) and Sharpening (FSR 1's RCAS: off, low,
+  medium, high). DLSS and temporal upscalers are not possible here:
+  docs/GRAPHICS-UPSCALING.md.
+- Quick save and quick load were looked into and are not included:
+  docs/QUICKSAVE.md says why.
 
 ## 0.1.0 (pre-release)
 

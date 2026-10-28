@@ -5,7 +5,10 @@
 **F1** (or the Guide button, or Back+Start) opens the menu:
 
 - **Display**: window or fullscreen, vertical sync, internal resolution,
-  aspect ratio, scaling filter, and **Borders**, what fills the sides of a
+  aspect ratio, scaling filter (Sharp, Smooth, Nearest, or **FSR**, AMD's
+  edge-aware upscaling for a window larger than the internal resolution),
+  **Sharpening** (AMD FSR 1's, off by default; see
+  [GRAPHICS-UPSCALING.md](GRAPHICS-UPSCALING.md)), and **Borders**, what fills the sides of a
   4:3 picture (black, the picture blurred, or your own image from the
   `borders` folder).
 - **Sound**: volume and muting.
@@ -29,7 +32,7 @@
 
 The whole game runs faster: F4 or L2 switches it on and off, R2 or ` held
 runs it only while held. The speed is set under Interface > Pause and speed,
-and the game's own Game menu too. Music and sounds keep their normal tempo
+or in the menu bar's Game > Fast-forward speed. Music and sounds keep their normal tempo
 (the sound driver runs in step with the audio device), and movies play at
 normal speed even with fast-forward on, so their sound stays with the
 picture; it picks up again after the movie. It adds to the quick scenes
