@@ -10,6 +10,9 @@
 #include <thread>
 #include <vector>
 
+#include <SDL3/SDL.h>
+#include <fstream>
+
 #include "Stubs/Pad.h"
 #include "hotkeys.h"
 
@@ -111,8 +114,90 @@ uint32_t padReads()
 
 } // namespace
 
+// RG_INPUT_FILE: a file read as it grows, a command a line, for an agent or
+// a tester driving a hidden run step by step (Rogue Galaxy: added).
+void startInputFile(const char *path)
+{
+    std::thread([file = std::string(path)]() {
+        std::streamoff done = 0;
+        for (;;)
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            std::ifstream in(file, std::ios::binary);
+            if (!in)
+            {
+                continue;
+            }
+            in.seekg(done);
+            std::string line;
+            while (std::getline(in, line))
+            {
+                if (in.eof())
+                {
+                    break; // a line still being written
+                }
+                done = in.tellg();
+                while (!line.empty() && (line.back() == '\r' || line.back() == ' '))
+                {
+                    line.pop_back();
+                }
+                if (line.empty())
+                {
+                    continue;
+                }
+                if (line == "shot")
+                {
+                    // F12, which the menu answers with a screenshot.
+                    for (const bool down : {true, false})
+                    {
+                        SDL_Event event{};
+                        event.type = down ? SDL_EVENT_KEY_DOWN : SDL_EVENT_KEY_UP;
+                        event.key.scancode = SDL_SCANCODE_F12;
+                        event.key.key = SDLK_F12;
+                        event.key.down = down;
+                        SDL_PushEvent(&event);
+                    }
+                    std::printf("[input] file: shot\n");
+                    continue;
+                }
+                // BUTTONS[:READS]: held for that many pad reads (default 6).
+                Step step{};
+                const size_t colon = line.find(':');
+                if (!parseButtons(line.substr(0, colon), step))
+                {
+                    std::fprintf(stderr, "[input] file: cannot parse '%s'\n", line.c_str());
+                    continue;
+                }
+                const uint32_t reads =
+                    colon == std::string::npos ? 6u : static_cast<uint32_t>(std::strtoul(line.c_str() + colon + 1, nullptr, 10));
+                std::printf("[input] file: %s at pad read %u\n", line.c_str(), padReads());
+                std::fflush(stdout);
+                ps2_stubs::setPadOverrideState(static_cast<uint16_t>(~step.mask), step.lx, step.ly, step.rx, step.ry);
+                const uint32_t until = padReads() + reads;
+                const auto give = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+                while (padReads() < until && std::chrono::steady_clock::now() < give)
+                {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                }
+                ps2_stubs::setPadOverrideState(0xFFFFu, 0x80, 0x80, 0x80, 0x80);
+                // Released for a few reads before the next press.
+                const uint32_t gap = padReads() + 3u;
+                while (padReads() < gap && std::chrono::steady_clock::now() < give)
+                {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                }
+                ps2_stubs::clearPadOverrideState();
+            }
+        }
+    }).detach();
+}
+
 void startInputScript()
 {
+    if (const char *file = std::getenv("RG_INPUT_FILE"); file && *file)
+    {
+        startInputFile(file);
+    }
     const char *script = std::getenv("RG_INPUT");
     if (!script || !*script)
     {

@@ -18,6 +18,7 @@
 
 #include "gfx/backends/sdlgpu/sdlgpu_replacements.h"
 #include "ps2_runtime.h"
+#include "settings_pages.h"
 
 // Roboto Medium (Apache 2.0), which dq8-gfx builds in for its menu.
 extern const unsigned char kUiFontData[];
@@ -55,12 +56,15 @@ struct Page
     uint64_t texels;
     uint32_t psm;
     FontType type;
+    uint32_t rows = 416u; // the part named: 512 x rows
 };
 constexpr Page kFontPages[] = {
     {0x2bad8e99ac5c8351ull, kPsmT4HL, FontType::Normal}, // FontTex_normal_EN_0, T4HL at 0x1C00
     {0x3e781ae048c61d81ull, kPsmT4, FontType::System},   // FontTex_system_EN_0, T4 at 0x2A00
-    // FontTex_name_EN_0 (names) was not met in testing: it keeps the game's
-    // glyphs and widths.
+    // FontTex_name_EN_0 follows the system page in memory (0x2BA0); the TEX0
+    // that draws it reaches past it into memory a render target holds, so
+    // only its first 72 rows, the four rows of cells ASCII needs, are named.
+    {0x785b309d00337092ull, kPsmT4, FontType::Name, 72u},
 };
 // RG_TEXTURE_LOG=1 also asks for the hashes of every 512x416 4-bit part,
 // for finding pages not listed above.
@@ -191,18 +195,20 @@ void apply()
         std::printf("[font] button prompts: PlayStation\n");
     }
 
-    if (g_modern && !g_font && g_haveTable)
+    // The widths follow the pictures: with replacements off, the game's.
+    const bool modern = g_modern && store.enabled();
+    if (modern && !g_font && g_haveTable)
     {
         g_font = loadTextFont();
     }
-    if (g_modern && g_font && !g_fontShown)
+    if (modern && g_font && !g_fontShown)
     {
         // One picture a page, each knowing its grid.
         for (size_t index = 0; index < std::size(kFontPages); ++index)
         {
             const Page page = kFontPages[index];
             std::shared_ptr<const hdart::Font> font = g_font;
-            store.setGenerated("font-" + std::to_string(index), {GsReplacementKey{page.texels, 0u, page.psm, 512u, 416u}},
+            store.setGenerated("font-" + std::to_string(index), {GsReplacementKey{page.texels, 0u, page.psm, 512u, page.rows}},
                                [font, page](uint32_t scale, const uint8_t *native, uint32_t width, uint32_t height,
                                             GsReplacementImage &out) {
                                    out.width = width * scale;
@@ -214,7 +220,7 @@ void apply()
         g_fontShown = true;
         std::printf("[font] text: %s\n", g_fontDescription.c_str());
     }
-    else if (!g_modern && g_fontShown)
+    else if (!modern && g_fontShown)
     {
         for (size_t index = 0; index < std::size(kFontPages); ++index)
         {
@@ -276,10 +282,14 @@ void install(PS2Runtime &runtime)
         for (const uint32_t psm : kProbePsms)
         {
             probes.push_back({1u, 0u, psm, 512u, 416u});
+            probes.push_back({1u, 0u, psm, 512u, 72u});
         }
         GsReplacementStore::instance().setGenerated(
             "probe", probes, [](uint32_t, const uint8_t *, uint32_t, uint32_t, GsReplacementImage &) { return false; });
     }
+    // What the game's Settings screen shows, this run's variables included.
+    rg::settingspages::noteNumber("button_prompts", g_prompts);
+    rg::settingspages::noteNumber("font_style", g_modern ? 1 : 0);
     g_installed = true;
     apply();
 }
@@ -304,7 +314,9 @@ void setReplacementsEnabled(bool on)
     {
         on = false;
     }
+    std::lock_guard lock(g_mutex);
     GsReplacementStore::instance().setEnabled(on);
+    apply();
 }
 
 void notePlayStationPad(bool playStation)

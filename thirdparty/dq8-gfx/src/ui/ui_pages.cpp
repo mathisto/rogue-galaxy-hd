@@ -419,6 +419,10 @@ void Overlay::drawInterfacePage() {
 }
 
 // The game's own switches, in the host's sections (Rogue Galaxy: added).
+// RG_UI_SCRIPT's "scrollto KEY": the Game page scrolls to that option once,
+// for screenshots of options below the fold (Rogue Galaxy: added).
+std::string g_scrollToGameOption;
+
 void Overlay::drawGamePage() {
     if (m_host.gameOptions.empty()) {
         mutedText("The game has no options of its own.");
@@ -438,6 +442,10 @@ void Overlay::drawGamePage() {
         if (!table)
             continue;
         settingRow(option.label.c_str(), option.help.empty() ? nullptr : option.help.c_str());
+        if (!g_scrollToGameOption.empty() && g_scrollToGameOption == option.key) {
+            ImGui::SetScrollHereY(0.2f);
+            g_scrollToGameOption.clear();
+        }
         if (option.number() && !option.choices.empty()) {
             // Named choices side by side (Rogue Galaxy: added).
             std::vector<const char *> labels;

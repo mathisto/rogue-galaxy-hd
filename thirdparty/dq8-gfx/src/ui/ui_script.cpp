@@ -13,6 +13,7 @@
 #include <sstream>
 
 namespace dq8::ui {
+extern std::string g_scrollToGameOption; // ui_pages.cpp
 namespace {
 std::string joined(const std::vector<std::string> &words) {
     std::string text;
@@ -109,6 +110,8 @@ void Overlay::runStep(const ScriptStep &step, uint64_t frame) {
         showBindings(first == "keyboard");
     } else if (command == "show") {
         showMenu(joined(step.arguments).c_str());
+    } else if (command == "scrollto") {
+        g_scrollToGameOption = first;
     } else if (command == "about") {
         openAbout();
     } else if (command == "shortcuts") {

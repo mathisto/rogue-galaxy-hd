@@ -552,19 +552,17 @@ std::unique_ptr<dq8::ui::Overlay> createMenu(PS2Runtime &runtime, dq8::gfx::SdlG
          "How fast the party's action gauge fills again in battle, against the game's (100%).",
          false, 25, 400, 100, "%d%%", 25},
         {"button_prompts", "Button prompts",
-         "The controller buttons the game's text shows: the PlayStation pad's, as the game has them, or an Xbox "
-         "controller's (A, B, X, Y, LB, RB, LT, RT, by position: Cross is A, Circle B, Square X, Triangle Y). Auto "
-         "shows the PlayStation ones while a PlayStation controller plays and the Xbox ones otherwise, the "
-         "keyboard included. Pictures drawn into the game's text, such as the tutorial boards, keep theirs.",
+         "Which buttons the game's text shows. Xbox goes by position: Cross is A, Circle B, Square X, Triangle Y, "
+         "L1 and R1 LB and RB, L2 and R2 LT and RT. Auto shows PlayStation buttons for a PlayStation controller and "
+         "Xbox ones otherwise. Pictures with buttons drawn in, such as the help pages, keep the PlayStation ones.",
          false, 0, 2, 2, "", 1, true, false, {"PlayStation", "Xbox", "Auto"}},
         {"font_style", "Font",
-         "The game's own font, or a modern one drawn sharp at the internal resolution: Roboto Medium, or the first "
-         ".ttf or .otf in the fonts folder (RG_FONT names another). Letters take their widths from the font, so "
-         "lines wrap anew; dialogue already on screen keeps its layout until the next page.",
+         "Modern draws the text in Roboto, or in the first .ttf or .otf in the fonts folder, sharp at the internal "
+         "resolution, and lines wrap to its letter widths. Text already on screen changes at its next page.",
          false, 0, 1, 0, "", 1, true, false, {"Original", "Modern"}},
         {"texture_replacements", "Texture replacements",
-         "Pictures standing in for the game's textures: the font and button prompts above, and any texture pack in "
-         "textures/SCUS-97490/replacements. Off, everything is the game's own.",
+         "Off shows every texture as the game has it: no Xbox buttons, no modern font, and no texture pack from "
+         "textures/SCUS-97490/replacements.",
          true},
         {"dev_tools", "Developer tools",
          "The tools the developers left in the game, switched off for release. Main menu: R3 shows every item's "

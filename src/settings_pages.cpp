@@ -116,7 +116,7 @@ constexpr const char *kFontNames[] = {"Original", "Modern"};
 constexpr Row kScenes[] = {
     {"fast_transporter", "Fast Transporters", Kind::Switch, ""},
     {"fast_revelation", "Fast Revelation", Kind::Switch, ""},
-    {"button_prompts", "Button Prompts", Kind::Number, "", kPromptNames},
+    {"button_prompts", "Prompts", Kind::Number, "", kPromptNames},
     {"font_style", "Font", Kind::Number, "", kFontNames},
 };
 
