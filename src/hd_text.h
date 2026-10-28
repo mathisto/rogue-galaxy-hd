@@ -41,8 +41,13 @@ void setModernFont(bool on);
 void setReplacementsEnabled(bool on);
 
 // The main thread, now and then: whether the controller playing is a
-// PlayStation one (false for any other, or none), for Auto.
-void notePlayStationPad(bool playStation);
+// PlayStation one (false for any other, or none), for Auto, and its name.
+void notePlayStationPad(bool playStation, const std::string &padName = {});
+
+// Which buttons the prompts show and why ("Button prompts: Xbox (Auto: the
+// pad playing, XInput Controller #1, is not a PlayStation one)"), for the
+// log and a toast when it changes.
+std::string promptsChoice();
 
 // The font in use and where it came from, for the menu's help.
 std::string fontDescription();

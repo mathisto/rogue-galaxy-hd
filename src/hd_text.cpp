@@ -101,6 +101,19 @@ constexpr DigitSheet kDigitSheets[] = {
     {{0x68940e5ee5d6687bull, 0u}, kPsmT8, 256u, 64u, kSaveLevelRows, std::size(kSaveLevelRows)},
 };
 
+// PlayStation buttons drawn into pictures: where, by picture
+// (tools/rg_psart_scan.py finds them; button_art_table.inc is its output).
+struct ButtonSheet
+{
+    uint64_t texels;
+    uint32_t psm;
+    uint32_t width, height;
+    uint32_t first, count; // in kButtonPatches
+};
+using hdart::Button;
+using hdart::ButtonPatch;
+#include "button_art_table.inc"
+
 std::mutex g_mutex;
 uint8_t *g_rdram = nullptr;
 hdart::GlyphTable g_original;
@@ -111,6 +124,7 @@ std::string g_fontDescription = "Roboto Medium (built in)";
 int g_prompts = static_cast<int>(Prompts::Auto);
 bool g_modern = false;
 bool g_playStationPad = false;
+std::string g_padName; // the controller playing, for promptsChoice()
 bool g_installed = false;
 // What is registered with the store now.
 bool g_xboxShown = false;
@@ -214,13 +228,38 @@ void apply()
                                out.width = width * scale;
                                out.height = height * scale;
                                return hdart::drawXboxIcons(*labels, scale, native, width, height, out.rgba);
-                           });
+                           },
+                           4u, true);
+        // The pictures with PlayStation buttons drawn into them (help boards,
+        // menu sheets, the loading recap): Xbox buttons over the same boxes,
+        // over a pack's upscale when there is one.
+        for (size_t index = 0; index < std::size(kButtonSheets); ++index)
+        {
+            const ButtonSheet &sheet = kButtonSheets[index];
+            store.setGenerated(
+                "xbox-art-" + std::to_string(index), {GsReplacementKey{sheet.texels, 0u, sheet.psm, sheet.width, sheet.height}},
+                [labels, &sheet](uint32_t scale, const uint8_t *native, uint32_t width, uint32_t height,
+                                 GsReplacementImage &out) {
+                    if (out.rgba.empty())
+                    {
+                        out.width = width * scale;
+                        out.height = height * scale;
+                    }
+                    return hdart::drawButtonPatches(*labels, scale, native, width, height, kButtonPatches + sheet.first,
+                                                    sheet.count, out.rgba);
+                },
+                8u, true);
+        }
         g_xboxShown = true;
         std::printf("[font] button prompts: Xbox\n");
     }
     else if (!xbox && g_xboxShown)
     {
         store.removeGenerated("xbox-prompts");
+        for (size_t index = 0; index < std::size(kButtonSheets); ++index)
+        {
+            store.removeGenerated("xbox-art-" + std::to_string(index));
+        }
         g_xboxShown = false;
         std::printf("[font] button prompts: PlayStation\n");
     }
@@ -244,13 +283,30 @@ void apply()
                                    out.width = width * scale;
                                    out.height = height * scale;
                                    return font->drawPage(page.type, scale, native, width, height, out.rgba);
-                               });
+                               },
+                               4u, true);
         }
         writeWidths(g_font->widths());
         // The menus' numerals (play time, money, counts, levels, stats) are
         // digit strips in menu sheets, not text: their digit rows redrawn in
         // the same font, over a pack's upscale of the sheet when there is one.
         std::shared_ptr<const hdart::Font> font = g_font;
+        // The field compass's letters (rc/compass.chr "moji", 64x64 T8), which
+        // no pack holds: redrawn in the same font, the ring is the pack's.
+        static constexpr hdart::LetterBox kCompassLetters[] = {
+            {9, 8, 14, 16, 'N'}, {41, 8, 15, 16, 'S'}, {7, 40, 18, 16, 'W'}, {41, 40, 15, 16, 'E'}};
+        store.setGenerated(
+            "compass-letters", {GsReplacementKey{0x44b14c2d2285a5f6ull, 0u, kPsmT8, 64u, 64u}},
+            [font](uint32_t scale, const uint8_t *native, uint32_t width, uint32_t height, GsReplacementImage &out) {
+                if (out.rgba.empty())
+                {
+                    out.width = width * scale;
+                    out.height = height * scale;
+                }
+                return hdart::drawLetterBoxes(*font, scale, native, width, height, kCompassLetters,
+                                              std::size(kCompassLetters), 1.5f, out.rgba);
+            },
+            8u, true);
         for (size_t index = 0; index < std::size(kDigitSheets); ++index)
         {
             const DigitSheet &sheet = kDigitSheets[index];
@@ -285,6 +341,7 @@ void apply()
         {
             store.removeGenerated("numerals-" + std::to_string(index));
         }
+        store.removeGenerated("compass-letters");
         writeWidths(g_original);
         g_fontShown = false;
         std::printf("[font] text: the game's own\n");
@@ -378,15 +435,40 @@ void setReplacementsEnabled(bool on)
     apply();
 }
 
-void notePlayStationPad(bool playStation)
+void notePlayStationPad(bool playStation, const std::string &padName)
 {
     std::lock_guard lock(g_mutex);
+    g_padName = padName;
     if (playStation == g_playStationPad)
     {
         return;
     }
     g_playStationPad = playStation;
     apply();
+}
+
+std::string promptsChoice()
+{
+    std::lock_guard lock(g_mutex);
+    if (!GsReplacementStore::instance().enabled())
+    {
+        return "Button prompts: PlayStation (replacement textures are off)";
+    }
+    switch (static_cast<Prompts>(g_prompts))
+    {
+    case Prompts::PlayStation:
+        return "Button prompts: PlayStation (chosen in the menu)";
+    case Prompts::Xbox:
+        return "Button prompts: Xbox (chosen in the menu)";
+    default:
+        break;
+    }
+    if (g_padName.empty())
+    {
+        return "Button prompts: Xbox (Auto: no controller is playing)";
+    }
+    return g_playStationPad ? "Button prompts: PlayStation (Auto: " + g_padName + " is a PlayStation controller)"
+                            : "Button prompts: Xbox (Auto: " + g_padName + " is not a PlayStation controller)";
 }
 
 std::string fontDescription()

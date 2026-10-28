@@ -1,0 +1,27 @@
+# Pictures (by name, or by export hash) or single boxes (<hash> <x> <y>) that
+# tools/rg_psart_scan.py finds but that hold no PlayStation button: checked by
+# eye on the annotated contact sheets (2026-10-28).
+font1            # unused font sheets
+font2
+InscLoad01       # a photo of the Insectron arena
+endtitle_tgs2
+title_TGS
+01
+e229_01an
+b_m_radar
+Fac_ope01a
+fh0022           # "Assembler" bubble
+hb0060           # the Suggestion bubble
+hb0101           # minimap star
+hb0120           # Toady
+hb0122           # "Combine" label
+hb0170           # map markers
+hb0340           # Insector battle photos
+hb0370
+hb0400
+hb0410
+hb0420
+hb0440
+hb0470
+hb0490
+hb0500

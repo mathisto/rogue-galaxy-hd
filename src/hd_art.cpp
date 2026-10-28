@@ -202,7 +202,9 @@ bool Font::drawPage(FontType type, uint32_t scale, const uint8_t *native, uint32
     const Layout &layout = m_layouts[static_cast<int>(type)];
     if (scale == 0u || width < static_cast<uint32_t>(cell.columns * cell.cellWidth))
         return false;
-    upscale(native, width, height, scale, out);
+    // Over a pack's picture of the page when there is one (its symbols stay).
+    if (out.size() != static_cast<size_t>(width) * scale * height * scale * 4u)
+        upscale(native, width, height, scale, out);
     const uint32_t outWidth = width * scale;
     const stbtt_fontinfo &info = m_info->font;
     std::vector<uint8_t> bitmap;
@@ -614,7 +616,178 @@ void paintGlyph(std::vector<uint8_t> &out, uint32_t outWidth, int left, int top,
     }
 }
 
+// The canvas laid over the picture at (left, top), its alpha over what is
+// there (the GS's alpha range in `out`).
+void blend(const Canvas &canvas, std::vector<uint8_t> &out, uint32_t outWidth, uint32_t outHeight, int left, int top)
+{
+    for (int y = 0; y < canvas.h; ++y)
+        for (int x = 0; x < canvas.w; ++x)
+        {
+            const int px = left + x, py = top + y;
+            if (px < 0 || py < 0 || px >= static_cast<int>(outWidth) || py >= static_cast<int>(outHeight))
+                continue;
+            const float *p = canvas.rgba.data() + (static_cast<size_t>(y) * canvas.w + x) * 4u;
+            const float a = p[3];
+            if (a <= 0.0f)
+                continue;
+            uint8_t *texel = out.data() + (static_cast<size_t>(py) * outWidth + px) * 4u;
+            const float under = std::min(1.0f, texel[3] / 128.0f);
+            const float total = a + under * (1.0f - a);
+            for (int c = 0; c < 3; ++c)
+            {
+                const float v = (p[c] * 255.0f + texel[c] * under * (1.0f - a)) / total;
+                texel[c] = static_cast<uint8_t>(std::lround(std::clamp(v, 0.0f, 255.0f)));
+            }
+            texel[3] = gsAlpha(total);
+        }
+}
+
 } // namespace
+
+bool drawButtonPatches(const Font &labels, uint32_t scale, const uint8_t *native, uint32_t width, uint32_t height,
+                       const ButtonPatch *patches, size_t count, std::vector<uint8_t> &out)
+{
+    if (scale == 0u || !native)
+        return false;
+    const uint32_t outWidth = width * scale, outHeight = height * scale;
+    if (out.size() != static_cast<size_t>(outWidth) * outHeight * 4u)
+        upscale(native, width, height, scale, out);
+    const float s = static_cast<float>(scale);
+    for (size_t i = 0; i < count; ++i)
+    {
+        const ButtonPatch &patch = patches[i];
+        const float rw = static_cast<float>(patch.w) * s, rh = static_cast<float>(patch.h) * s;
+        const float cx = (static_cast<float>(patch.x) + static_cast<float>(patch.w) * 0.5f) * s;
+        const float cy = (static_cast<float>(patch.y) + static_cast<float>(patch.h) * 0.5f) * s;
+        const bool face = patch.button <= Button::Y;
+        // The icon's own unit: a face icon is 22 units across, a shoulder 32 x 20,
+        // grown a little so the game's rim is covered.
+        const float unit = face ? std::max(rw, rh) / 20.0f : std::max(rw / 30.0f, rh / 18.0f);
+        const int cw = static_cast<int>(std::ceil((face ? 22.0f : 32.0f) * unit));
+        const int ch = static_cast<int>(std::ceil((face ? 22.0f : 20.0f) * unit));
+        Canvas canvas(cw, ch);
+        switch (patch.button)
+        {
+        case Button::A:
+            faceButton(canvas, labels, 'A', {0.36f, 0.70f, 0.20f}, unit);
+            break;
+        case Button::B:
+            faceButton(canvas, labels, 'B', {0.86f, 0.22f, 0.20f}, unit);
+            break;
+        case Button::X:
+            faceButton(canvas, labels, 'X', {0.20f, 0.45f, 0.90f}, unit);
+            break;
+        case Button::Y:
+            faceButton(canvas, labels, 'Y', {0.93f, 0.72f, 0.10f}, unit);
+            break;
+        case Button::LB:
+            shoulderButton(canvas, labels, "LB", false, unit);
+            break;
+        case Button::RB:
+            shoulderButton(canvas, labels, "RB", false, unit);
+            break;
+        case Button::LT:
+            shoulderButton(canvas, labels, "LT", true, unit);
+            break;
+        case Button::RT:
+            shoulderButton(canvas, labels, "RT", true, unit);
+            break;
+        }
+        blend(canvas, out, outWidth, outHeight, static_cast<int>(std::lround(cx - cw * 0.5f)),
+              static_cast<int>(std::lround(cy - ch * 0.5f)));
+    }
+    return true;
+}
+
+bool drawLetterBoxes(const Font &font, uint32_t scale, const uint8_t *native, uint32_t width, uint32_t height,
+                     const LetterBox *boxes, size_t count, float outline, std::vector<uint8_t> &out)
+{
+    if (scale == 0u || !native)
+        return false;
+    const uint32_t outWidth = width * scale;
+    if (out.size() != static_cast<size_t>(outWidth) * height * scale * 4u)
+        upscale(native, width, height, scale, out);
+    const float s = static_cast<float>(scale);
+    const auto at = [&](int x, int y) { return native + (static_cast<size_t>(y) * width + x) * 4u; };
+    for (size_t i = 0; i < count; ++i)
+    {
+        const LetterBox &box = boxes[i];
+        // The letter's colours: its outline the darkest texels, its fill by
+        // row the lightest.
+        float lo = 1e9f, hi = -1e9f;
+        for (int y = box.y; y < box.y + box.h; ++y)
+            for (int x = box.x; x < box.x + box.w; ++x)
+                if (at(x, y)[3] >= 0x40u)
+                {
+                    lo = std::min(lo, luminance(at(x, y)));
+                    hi = std::max(hi, luminance(at(x, y)));
+                }
+        if (hi < lo)
+            continue;
+        Rgb edgeColor;
+        float edgeAlpha = 0.0f;
+        int edgeCount = 0;
+        std::vector<Rgb> fill(static_cast<size_t>(box.h));
+        std::vector<int> fillCount(static_cast<size_t>(box.h), 0);
+        for (int y = 0; y < box.h; ++y)
+            for (int x = 0; x < box.w; ++x)
+            {
+                const uint8_t *p = at(box.x + x, box.y + y);
+                if (p[3] < 0x40u)
+                    continue;
+                const float l = luminance(p);
+                if (l <= lo + 0.3f * (hi - lo))
+                {
+                    for (int c = 0; c < 3; ++c)
+                        edgeColor.c[c] += p[c];
+                    edgeAlpha += std::min(1.0f, p[3] / 128.0f);
+                    ++edgeCount;
+                }
+                else if (l >= lo + 0.55f * (hi - lo))
+                {
+                    for (int c = 0; c < 3; ++c)
+                        fill[y].c[c] += p[c];
+                    ++fillCount[y];
+                }
+            }
+        if (edgeCount == 0)
+            continue;
+        for (int c = 0; c < 3; ++c)
+            edgeColor.c[c] /= static_cast<float>(edgeCount);
+        edgeAlpha /= static_cast<float>(edgeCount);
+        int first = -1;
+        for (int y = 0; y < box.h; ++y)
+            if (fillCount[y])
+            {
+                for (int c = 0; c < 3; ++c)
+                    fill[y].c[c] /= static_cast<float>(fillCount[y]);
+                if (first < 0)
+                    first = y;
+            }
+        if (first < 0)
+            continue;
+        for (int y = 0; y < box.h; ++y)
+            if (!fillCount[y])
+            {
+                int best = first;
+                for (int k = 0; k < box.h; ++k)
+                    if (fillCount[k] && std::abs(k - y) < std::abs(best - y))
+                        best = k;
+                fill[y] = fill[best];
+            }
+        const float outlinePx = outline * s;
+        const int w = box.w * static_cast<int>(scale), h = box.h * static_cast<int>(scale);
+        const char one[2] = {box.letter, 0};
+        float size = 0.0f, squeeze = 1.0f;
+        fitGlyphs(font, one, static_cast<float>(h) - 2.0f * outlinePx, static_cast<float>(w) - 2.0f * outlinePx,
+                  static_cast<float>(h) - 2.0f * outlinePx, size, squeeze);
+        std::vector<float> mask(static_cast<size_t>(w) * h, 0.0f);
+        glyphMask(font, box.letter, w * 0.5f, h * 0.5f, size, squeeze, false, mask, w, h);
+        paintGlyph(out, outWidth, box.x * static_cast<int>(scale), box.y * static_cast<int>(scale), w, h, mask,
+                   outlinePx, edgeColor, edgeAlpha, fill, box.y, s);
+    }
+    return true;
+}
 
 bool drawDigitRows(const Font &font, uint32_t scale, const uint8_t *native, uint32_t width, uint32_t height,
                    const DigitRow *rows, size_t rowCount, std::vector<uint8_t> &out)
@@ -792,7 +965,9 @@ bool drawXboxIcons(const Font &labels, uint32_t scale, const uint8_t *native, ui
 {
     if (width < 128u || height < 42u || scale == 0u)
         return false;
-    upscale(native, width, height, scale, out);
+    // Over a pack's picture of the sheet when there is one.
+    if (out.size() != static_cast<size_t>(width) * scale * height * scale * 4u)
+        upscale(native, width, height, scale, out);
     const float s = static_cast<float>(scale);
     const uint32_t outWidth = width * scale;
     // The cells of gaiji2's metric table (D_0044E680): the shoulder buttons

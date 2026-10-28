@@ -141,6 +141,43 @@ struct DigitRow
 bool drawDigitRows(const Font &font, uint32_t scale, const uint8_t *native, uint32_t width, uint32_t height,
                    const DigitRow *rows, size_t rowCount, std::vector<uint8_t> &out);
 
+// Letters of a picture (the compass's N E S W) redrawn with `font`, each in
+// its box (texels of the picture, the letter's ink with its outline), with
+// the game's outline colour and its fill's colours from top to bottom.
+struct LetterBox
+{
+    int16_t x, y, w, h;
+    char letter;
+};
+bool drawLetterBoxes(const Font &font, uint32_t scale, const uint8_t *native, uint32_t width, uint32_t height,
+                     const LetterBox *boxes, size_t count, float outline, std::vector<uint8_t> &out);
+
+// PlayStation button art baked into a picture, and the Xbox button drawn over
+// it (by position: Cross A, Circle B, Square X, Triangle Y, L1/R1 LB/RB,
+// L2/R2 LT/RT).
+enum class Button : uint8_t
+{
+    A,
+    B,
+    X,
+    Y,
+    LB,
+    RB,
+    LT,
+    RT,
+};
+struct ButtonPatch
+{
+    int16_t x, y, w, h; // the game's icon, texels of the picture
+    Button button;
+};
+
+// The Xbox buttons drawn over `patches`, each filling the game's icon's box
+// (so it covers it), over `out` (a pack's upscale, scale times the picture)
+// or, when it is empty, the game's texels upscaled.
+bool drawButtonPatches(const Font &labels, uint32_t scale, const uint8_t *native, uint32_t width, uint32_t height,
+                       const ButtonPatch *patches, size_t count, std::vector<uint8_t> &out);
+
 // The game's texels upscaled `scale` times, nearest.
 void upscale(const uint8_t *native, uint32_t width, uint32_t height, uint32_t scale, std::vector<uint8_t> &out);
 

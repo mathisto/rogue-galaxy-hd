@@ -334,16 +334,29 @@ bool pump(void *userData)
     if (++padCheck % 60u == 1u)
     {
         bool playStation = false;
+        std::string padName;
         for (const dq8::gfx::ControllerInfo &controller : backend->padInput().controllers())
         {
             if (controller.active)
             {
                 playStation = controller.type == SDL_GAMEPAD_TYPE_PS3 || controller.type == SDL_GAMEPAD_TYPE_PS4 ||
                               controller.type == SDL_GAMEPAD_TYPE_PS5;
+                padName = controller.name;
                 break;
             }
         }
-        rg::hdtext::notePlayStationPad(playStation);
+        rg::hdtext::notePlayStationPad(playStation, padName);
+        // Which buttons the prompts show, and why, once each time it changes.
+        static std::string promptsShown;
+        if (std::string choice = rg::hdtext::promptsChoice(); choice != promptsShown)
+        {
+            promptsShown = choice;
+            std::printf("[font] %s\n", choice.c_str());
+            if (g_menu)
+            {
+                g_menu->notify(choice, dq8::ui::Icon::Info);
+            }
+        }
     }
 #if defined(RG_HAS_SDLGPU)
     // F8: the texture pack read again, and every ten seconds a line on what
