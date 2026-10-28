@@ -15,7 +15,8 @@ disc image; nothing of the game is distributed.
 - Up to 8x internal resolution
 - An in-game menu (F1) for graphics, sound and controls
 - Xbox button prompts, a sharp modern font, and texture packs
-  ([FONT-AND-PROMPTS.md](docs/FONT-AND-PROMPTS.md))
+  ([FONT-AND-PROMPTS.md](docs/FONT-AND-PROMPTS.md)), including 4x HD
+  textures built from your disc ([TEXTURE-PACKS.md](docs/TEXTURE-PACKS.md))
 - Game options: camera, field of view, draw distance, instant text,
   encounter rate, experience, money, item drops, shop prices and more
   ([all of them](docs/OPTIONS.md))
@@ -70,6 +71,8 @@ See [docs/OPTIONS.md](docs/OPTIONS.md) for each one.
 - [docs/OPTIONS.md](docs/OPTIONS.md): the menu and every game option
 - [docs/FONT-AND-PROMPTS.md](docs/FONT-AND-PROMPTS.md): button prompts, the
   modern font, texture replacement packs
+- [docs/TEXTURE-PACKS.md](docs/TEXTURE-PACKS.md): HD texture packs: building,
+  installing, tuning, learn mode
 - [docs/BUILDING.md](docs/BUILDING.md): building by hand, and the project's layout
 - [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md): the debug launchers, profiling and
   the environment variables

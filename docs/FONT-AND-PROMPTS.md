@@ -117,7 +117,9 @@ textures\SCUS-97490\replacements\     (in the working directory; sub-folders all
   to the GS's 0x80). A picture of the top-left WxH part of a larger texture
   is allowed (the game's 512x416 font pages live in 512x512 textures).
 - A file wins over a drawn picture (the prompts, the font).
-- Read once, on first use; changes need a restart.
+- Read in the background on first use; F8 reads the folder again. Memory,
+  mipmaps, learn mode and a pack of the whole game:
+  [TEXTURE-PACKS.md](TEXTURE-PACKS.md).
 
 Drawing: a picture at the internal resolution is sampled texel for texel; at
 any other scale it is filtered, clamped to each sprite's own texels so a

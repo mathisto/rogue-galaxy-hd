@@ -86,7 +86,8 @@ free camera keeps them either way.
 |---|---|
 | Button prompts | PlayStation, Xbox (A, B, X, Y, LB, RB, LT, RT, by position: Cross is A), or Auto (the default: PlayStation buttons for a PlayStation controller, Xbox ones otherwise). Pictures with buttons drawn in, such as the help pages, keep the PlayStation ones. |
 | Font | Original, or Modern: Roboto, or your own .ttf in the `fonts` folder, drawn sharp at the internal resolution; lines rewrap to its letter widths. |
-| Texture replacements | On by default. Off shows every texture as the game has it: no Xbox buttons, no modern font, no texture pack. |
+| Texture replacements | On by default. Off shows every texture as the game has it: no Xbox buttons, no modern font, no texture pack. F8 reads the pack's folder again. |
+| Texture pack memory | 512 MB to 8 GB (default 2 GB): the video memory an HD texture pack may take; the least recently seen pictures give way ([TEXTURE-PACKS.md](TEXTURE-PACKS.md)). |
 
 **Developers**
 
@@ -120,4 +121,6 @@ the main menu): L1 and R1 turn the page.
   and `RG_FAST_FORWARD_TRIGGERS`; for text and prompts: `RG_BUTTON_PROMPTS`,
   `RG_FONT_STYLE`, `RG_FONT`, `RG_TEXTURE_REPLACEMENTS`.
 - Texture packs go in `textures\SCUS-97490\replacements`:
-  [FONT-AND-PROMPTS.md](FONT-AND-PROMPTS.md#texture-replacements).
+  [FONT-AND-PROMPTS.md](FONT-AND-PROMPTS.md#texture-replacements); building
+  one from the AI-upscaled set, tuning and completing it:
+  [TEXTURE-PACKS.md](TEXTURE-PACKS.md).

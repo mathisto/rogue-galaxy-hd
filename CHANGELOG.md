@@ -24,6 +24,16 @@
 - Texture replacements: packs of PNGs in
   `textures\SCUS-97490\replacements`, named by texture hash
   (`RG_TEXTURE_LOG=1`); docs/FONT-AND-PROMPTS.md.
+- HD texture packs: a pack of the AI-upscaled (4x) textures can be built
+  from your disc with the research tools and dropped in that folder
+  (docs/TEXTURE-PACKS.md). Pictures are read in the background on first use
+  (the game's texture shows meanwhile), kept under a memory budget (F1 >
+  Game > Texture pack memory, 2 GB by default), shared on the GPU, given
+  smaller levels so distant ground does not sparkle, and cut-outs keep the
+  game's silhouettes. F8 reads the folder again. Learn mode
+  (`RG_TEXTURE_LEARN`) collects the textures a pack misses while you play.
+  Known gaps: the item icon sheet, text pages (the modern font covers them),
+  textures whose palette the game animates.
 
 ## 0.1.0 (pre-release)
 
