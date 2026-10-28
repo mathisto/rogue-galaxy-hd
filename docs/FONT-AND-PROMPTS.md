@@ -61,9 +61,31 @@ pills, the item menu's and save screens' L1/R1, and the help boards' buttons
 written by `tools/rg_psart_scan.py` (a template match of `gaiji2`'s own
 icons against the UI textures exported by `im3_export.py`; boxes only, no
 art). See [SESSION-NOTES-polish.md](SESSION-NOTES-polish.md) for what it
-covers and what stays: words such as "START button" and "SELECT", controller
-diagrams, the analog stick art, and icons in a style the match does not
-recognise stay as the game drew them.
+covers.
+
+Since polish 2 ([SESSION-NOTES-polish-2.md](SESSION-NOTES-polish-2.md)) the
+same table also holds:
+
+- **the controller drawing** of the controls boards (Help > Controls
+  -Movement- and -Battle-, the loading screen's Game Controls): an
+  Xbox-style pad drawn by the program over the DualShock, its d-pad,
+  sticks, View/Menu and A B X Y where the DualShock's were, so the boards'
+  lines still end on them;
+- **START and SELECT** pictograms as the Menu (three bars) and View (two
+  windows) buttons, the **d-pad** as Xbox's cross, the **stick** mushrooms
+  as LS/RS thumbsticks;
+- **words in the pictures' lettering**: the pause screen's "START button"
+  reads "MENU button", "Press the START button" reads "Press the Menu
+  button", "L3 button"/"R3 button" read "LS"/"RS", redrawn in the label
+  font in the word's colours.
+
+The extra boxes come from the scanner with more templates (`EXTRA=`, cut
+from the game's pictures and kept outside the repository) and from
+`tools/rg_psart_manual.txt` (measured by hand); `tools/rg_psart_emit.py
+--base` adds them to the table. Still the game's: the movie pause's "START
+button: Continue" (drawn from another picture), icons in styles the match
+misses (hb0011's large R1, hb0312's tabs, the factory's `Fac_ope01a`), the
+Japanese copies' words.
 
 ## Numerals
 
@@ -75,8 +97,16 @@ font, in the box each of the game's digits inked (so widths, centring and
 the colon stay the game's), with the game's outline colour and its fill's
 colours top to bottom, measured from the sheet; the money digits lean like
 the game's italic ones. Over a pack's upscale of the sheet when there is
-one, so the rest of the sheet stays HD. Battle damage numbers and the
-battle HUD's HP digits (`btl_st01/02`, `frame`) stay the game's.
+one, so the rest of the sheet stays HD.
+
+The battle's digits too (polish 2): the damage popups (`btl_st02`, drawn by
+DamagePopupDraw 0x2D3240: white, italic, a two-texel outline), the cyan and
+big orange rows of `btl_st01`, the HUD's HP/AP digits big and small with
+their '/' (`b_m_base`), and the results screen's Exp/Skills and level
+digits (`b_end_base`). The thick-outlined rows get the font's strokes grown
+to match the game's bold digits (`DigitRow::outline`). The pictures are
+keyed for any palette, so popups the game tints by palette or vertex colour
+(heal, critical) take the redrawn digits too; those were not seen in a test.
 
 The field compass's letters (N E S W, `rc/compass.chr` "moji", which no
 pack holds) are redrawn the same way with Font Modern.

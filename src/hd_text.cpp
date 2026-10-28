@@ -94,7 +94,20 @@ constexpr hdart::DigitRow kItemMoneyRows[] = {{0, 105, 22, 14, "", 0.25f}};
 constexpr hdart::DigitRow kSaveFileRows[] = {{0, 0, 18, 14, ""}};
 // TP_top_02a: the levels on the save and load screens.
 constexpr hdart::DigitRow kSaveLevelRows[] = {{0, 0, 14, 12, ""}};
+// The battle's (polish 2; menu_static_img_en.pac, measured on the exports):
+// btl_st02 the damage popups (DamagePopupDraw, 0x2D3240: white, thick
+// outline, italic, '/'); btl_st01 the cyan italic row and the big orange
+// one; b_m_base the HUD's HP/AP digits, big and small with '/'; b_end_base
+// the results screen's Exp/Skills digits and level digits.
+constexpr hdart::DigitRow kDamageRows[] = {{0, 0, 25, 20, "/", 0.2f, 2.0f}};
+constexpr hdart::DigitRow kBattleSheetRows[] = {{0, 89, 18, 12, "", 0.2f, 1.5f}, {0, 227, 29, 24, "", 0.2f, 2.0f}};
+constexpr hdart::DigitRow kBattleHudRows[] = {{0, 80, 18, 12, ""}, {0, 98, 13, 10, "/"}};
+constexpr hdart::DigitRow kResultsRows[] = {{0, 2, 19, 14, "/", 0.2f}, {0, 23, 18, 14, "", 0.15f}};
 constexpr DigitSheet kDigitSheets[] = {
+    {{0xcc775659c50573adull, 0u}, kPsmT8, 256u, 128u, kDamageRows, std::size(kDamageRows)},
+    {{0xccff3553abe4a2f8ull, 0u}, kPsmT8, 256u, 256u, kBattleSheetRows, std::size(kBattleSheetRows)},
+    {{0xbaa808e518190d2aull, 0u}, kPsmT8, 256u, 320u, kBattleHudRows, std::size(kBattleHudRows)},
+    {{0xfa28ec1b71bf4662ull, 0u}, kPsmT8, 256u, 128u, kResultsRows, std::size(kResultsRows)},
     {{0x5fd0e1dbd5ef4f1cull, 0x1f1ea76d537d92ceull}, kPsmT4, 256u, 128u, kTopMenuRows, std::size(kTopMenuRows)},
     {{0x394b14f4a10e95a0ull, 0x6a9f43a50179bff6ull}, kPsmT8, 256u, 128u, kItemMoneyRows, std::size(kItemMoneyRows)},
     {{0x4919d4a889d9698dull, 0u}, kPsmT8, 256u, 128u, kSaveFileRows, std::size(kSaveFileRows)},
