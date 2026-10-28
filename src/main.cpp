@@ -36,6 +36,9 @@
 #include "draw_distance.h"
 #include "free_camera.h"
 #include "instant_text.h"
+#if defined(RG_HAS_SDLGPU)
+#include "hd_text.h"
+#endif
 #include "map_chests.h"
 #include "opening.h"
 #include "widescreen.h"
@@ -170,6 +173,9 @@ int run(int argc, char **argv)
     rg::mapchests::install(runtime);
     rg::freecamera::install(runtime);
     rg::settingspages::install(runtime);
+#if defined(RG_HAS_SDLGPU)
+    rg::hdtext::install(runtime);
+#endif
     rg::quickscenes::install(runtime);
     rg::debug::installCallTrace(runtime);
     rg::debug::installHardwareWatch(runtime);

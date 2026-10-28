@@ -139,6 +139,8 @@ endif()
 target_compile_definitions(roguegalaxy PRIVATE RG_REVISION="${RG_REVISION}")
 if(RG_GS_SDLGPU)
     target_link_libraries(roguegalaxy PRIVATE dq8_gfx_sdlgpu dq8_ui)
+    # The font and the button prompts, drawn into texture replacements.
+    target_sources(roguegalaxy PRIVATE hd_art.cpp hd_text.cpp)
     target_compile_definitions(roguegalaxy PRIVATE RG_HAS_SDLGPU=1)
 endif()
 # On Windows the runtime's FFmpeg is DLLs; put them beside the executable.

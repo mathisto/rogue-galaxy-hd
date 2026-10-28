@@ -22,6 +22,7 @@
 #include "free_camera.h"
 #include "hotkeys.h"
 #include "instant_text.h"
+#include "hd_text.h"
 #include "map_chests.h"
 #include "loading_screen.h"
 #include "opening.h"
@@ -45,6 +46,7 @@
 #include "runtime/ps2_native_iop.h"
 #include "runtime/ps2_pad_host.h"
 #include "ui/ui_overlay.h"
+#include "gfx/backends/sdlgpu/sdlgpu_replacements.h"
 
 #include <cctype>
 #include <filesystem>
@@ -139,6 +141,10 @@ void applyGameOption(const std::string &key, bool on)
         rg::quickscenes::setEnabled(rg::quickscenes::Scene::Transporter, on);
     else if (key == "fast_revelation")
         rg::quickscenes::setEnabled(rg::quickscenes::Scene::Revelation, on);
+#if defined(RG_HAS_SDLGPU)
+    else if (key == "texture_replacements")
+        rg::hdtext::setReplacementsEnabled(on);
+#endif
 }
 
 void applyGameNumber(const std::string &key, int value)
@@ -162,6 +168,12 @@ void applyGameNumber(const std::string &key, int value)
         rg::shopprices::setPercent(value);
     else if (key == "action_gauge")
         rg::battlerates::setActionGauge(value);
+#if defined(RG_HAS_SDLGPU)
+    else if (key == "button_prompts")
+        rg::hdtext::setPrompts(value);
+    else if (key == "font_style")
+        rg::hdtext::setModernFont(value == 1);
+#endif
 }
 
 // F9 and F10 presses, counted as SDL queues their key-down events. pump()
@@ -307,6 +319,23 @@ bool pump(void *userData)
         }
     }
     followQuickScenes();
+    // Button prompts on Auto follow the controller playing: a PlayStation
+    // one, or not. Checked about once a second.
+    static unsigned padCheck = 0u;
+    if (++padCheck % 60u == 1u)
+    {
+        bool playStation = false;
+        for (const dq8::gfx::ControllerInfo &controller : backend->padInput().controllers())
+        {
+            if (controller.active)
+            {
+                playStation = controller.type == SDL_GAMEPAD_TYPE_PS3 || controller.type == SDL_GAMEPAD_TYPE_PS4 ||
+                              controller.type == SDL_GAMEPAD_TYPE_PS5;
+                break;
+            }
+        }
+        rg::hdtext::notePlayStationPad(playStation);
+    }
     // The free camera turned on or off, by F6, either menu or Start: a toast.
     static bool freeCameraWas = false;
     if (const bool freeCamera = rg::freecamera::enabled(); freeCamera != freeCameraWas)
@@ -522,6 +551,21 @@ std::unique_ptr<dq8::ui::Overlay> createMenu(PS2Runtime &runtime, dq8::gfx::SdlG
         {"action_gauge", "Action gauge speed",
          "How fast the party's action gauge fills again in battle, against the game's (100%).",
          false, 25, 400, 100, "%d%%", 25},
+        {"button_prompts", "Button prompts",
+         "The controller buttons the game's text shows: the PlayStation pad's, as the game has them, or an Xbox "
+         "controller's (A, B, X, Y, LB, RB, LT, RT, by position: Cross is A, Circle B, Square X, Triangle Y). Auto "
+         "shows the PlayStation ones while a PlayStation controller plays and the Xbox ones otherwise, the "
+         "keyboard included. Pictures drawn into the game's text, such as the tutorial boards, keep theirs.",
+         false, 0, 2, 2, "", 1, true, false, {"PlayStation", "Xbox", "Auto"}},
+        {"font_style", "Font",
+         "The game's own font, or a modern one drawn sharp at the internal resolution: Roboto Medium, or the first "
+         ".ttf or .otf in the fonts folder (RG_FONT names another). Letters take their widths from the font, so "
+         "lines wrap anew; dialogue already on screen keeps its layout until the next page.",
+         false, 0, 1, 0, "", 1, true, false, {"Original", "Modern"}},
+        {"texture_replacements", "Texture replacements",
+         "Pictures standing in for the game's textures: the font and button prompts above, and any texture pack in "
+         "textures/SCUS-97490/replacements. Off, everything is the game's own.",
+         true},
         {"dev_tools", "Developer tools",
          "The tools the developers left in the game, switched off for release. Main menu: R3 shows every item's "
          "icon, R1 + R3 a list of them, and Cross gives one of the one picked. Help pages and info list: R1 + "
@@ -534,6 +578,7 @@ std::unique_ptr<dq8::ui::Overlay> createMenu(PS2Runtime &runtime, dq8::gfx::SdlG
         {"sixty_fps", "Camera and view"},
         {"skip_opening", "Convenience"},
         {"encounter_rate", "Battles and rewards"},
+        {"button_prompts", "Text and prompts"},
         {"dev_tools", "Developers"},
     };
     // The game's own Settings screen shows them on pages of its own.
@@ -634,6 +679,23 @@ Setup::Setup(PS2Runtime &runtime)
         // Aspect ratio Auto follows the Widescreen option.
         sdl->setGameWidescreenQuery([] { return rg::widescreen::wide() ? 1 : 0; });
         sdl->setSideImageLoader(&loadBorderImage);
+        // Texture replacements: packs in textures/SCUS-97490/replacements
+        // (in the working directory, beside borders), read by stb_image.
+        dq8::gfx::GsReplacementStore::instance().setImageLoader(
+            [](const std::string &path, uint32_t &width, uint32_t &height, std::vector<uint8_t> &rgba) {
+                int w = 0, h = 0, channels = 0;
+                unsigned char *pixels = stbi_load(path.c_str(), &w, &h, &channels, 4);
+                if (!pixels)
+                {
+                    return false;
+                }
+                width = static_cast<uint32_t>(w);
+                height = static_cast<uint32_t>(h);
+                rgba.assign(pixels, pixels + static_cast<size_t>(w) * static_cast<size_t>(h) * 4u);
+                stbi_image_free(pixels);
+                return true;
+            });
+        dq8::gfx::GsReplacementStore::instance().setPackDirectory("textures/SCUS-97490/replacements");
         if (noWindow)
         {
             std::printf("[rg] GS: sdlgpu, presenting through the runtime window\n");
