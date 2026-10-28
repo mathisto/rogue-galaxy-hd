@@ -144,19 +144,87 @@ struct GsReplacementStore::Impl {
         std::vector<GsReplacementKey> keys;
         GsReplacementGenerator generator;
         uint32_t maxScale = 4u;
-        // Drawn pictures by texture and scale, until the art changes.
-        std::map<std::pair<GsReplacementKey, uint32_t>, std::shared_ptr<const GsReplacementImage>, DrawnLess> drawn;
-        bool failedLogged = false;
-        // Drawn over a pack file's picture too (setGenerated's overFiles):
-        // by texture, the file's picture it was drawn over and the result.
+        // Drawn over a pack file's picture too (setGenerated's overFiles),
+        // and over the other generated pictures of the texture.
         bool overFiles = false;
-        struct Over {
-            std::shared_ptr<const GsReplacementImage> base;
-            std::shared_ptr<const GsReplacementImage> drawn;
-        };
-        std::map<GsReplacementKey, Over, KeyLess> over;
     };
     std::map<std::string, Generated> generated;
+    // What the generated pictures made of a texture at a scale: drawn from
+    // its texels, or over `base` (a file's picture); cleared when they change.
+    struct Composed {
+        std::shared_ptr<const GsReplacementImage> base;
+        std::shared_ptr<const GsReplacementImage> image;
+        std::string label;
+    };
+    std::map<std::pair<GsReplacementKey, uint32_t>, Composed, DrawnLess> composed;
+
+    // With the lock held, which it drops while drawing (a font takes some
+    // milliseconds). True with `out` set when something was drawn: the
+    // pictures drawn from the texture's own texels first, then the ones that
+    // draw over (over `base` alone when it is given).
+    bool composeLocked(std::unique_lock<std::mutex> &lock, const GsReplacementKey &key, uint32_t scale,
+                       const uint8_t *native, const std::shared_ptr<const GsReplacementImage> &base,
+                       GsReplacementPicture &out) {
+        GsReplacementKey any = key;
+        any.clut = 0u;
+        const auto cacheKey = std::make_pair(key, scale);
+        if (const auto done = composed.find(cacheKey); done != composed.end() && done->second.base == base) {
+            if (!done->second.image)
+                return false;
+            out = {done->second.image, scale, done->second.label};
+            return true;
+        }
+        std::vector<std::pair<std::string, GsReplacementGenerator>> steps;
+        for (int pass = 0; pass < 2; ++pass)
+            for (const auto &[name, entry] : generated) {
+                if (entry.overFiles != (pass == 1) || (base && !entry.overFiles))
+                    continue;
+                if (std::any_of(entry.keys.begin(), entry.keys.end(), [&](const GsReplacementKey &listedKey) {
+                        return listedKey == key || listedKey == any;
+                    }))
+                    steps.push_back({name, entry.generator});
+            }
+        if (steps.empty() || !native)
+            return false;
+        const uint64_t seenGeneration = generation.load();
+        lock.unlock();
+        const auto start = Clock::now();
+        auto image = std::make_shared<GsReplacementImage>();
+        if (base) {
+            image->width = base->width;
+            image->height = base->height;
+            image->rgba = base->rgba;
+        }
+        std::string label;
+        for (const auto &[name, generator] : steps) {
+            bool ok = false;
+            try {
+                ok = generator && generator(scale, native, key.width, key.height, *image) &&
+                     image->width == key.width * scale && image->height == key.height * scale &&
+                     image->rgba.size() == static_cast<size_t>(image->width) * image->height * 4u;
+            } catch (const std::exception &e) {
+                std::fprintf(stderr, "[texrep] %s: %s\n", name.c_str(), e.what());
+            }
+            if (ok)
+                label += (label.empty() ? "" : "+") + name;
+            else
+                std::fprintf(stderr, "[texrep] %s: not drawn for %s\n", name.c_str(), hex(key.texels).c_str());
+        }
+        lock.lock();
+        const bool drew = !label.empty();
+        if (drew)
+            std::fprintf(stderr, "[texrep] drew %s for %s at %ux in %.1f ms\n", label.c_str(), hex(key.texels).c_str(),
+                         scale, std::chrono::duration<double, std::milli>(Clock::now() - start).count());
+        std::shared_ptr<const GsReplacementImage> shared;
+        if (drew)
+            shared = std::move(image);
+        if (generation.load() == seenGeneration)
+            composed[cacheKey] = {base, shared, label};
+        if (!drew)
+            return false;
+        out = {shared, scale, label};
+        return true;
+    }
 
     // Work for the threads.
     std::deque<GsReplacementKey> decodeQueue;
@@ -661,10 +729,9 @@ void GsReplacementStore::setGenerated(const std::string &name, std::vector<GsRep
         entry.generator = std::move(generator);
         entry.maxScale = std::clamp<uint32_t>(maxScale, 1u, 8u);
         entry.overFiles = overFiles;
-        entry.drawn.clear();
-        entry.over.clear();
-        entry.failedLogged = false;
+        m_impl->composed.clear();
         m_impl->rebuildShapesLocked();
+        m_impl->bump();
     }
     m_impl->bump();
 }
@@ -674,7 +741,9 @@ void GsReplacementStore::removeGenerated(const std::string &name) {
         std::lock_guard lock(m_impl->mutex);
         if (m_impl->generated.erase(name) == 0u)
             return;
+        m_impl->composed.clear();
         m_impl->rebuildShapesLocked();
+        m_impl->bump();
     }
     m_impl->bump();
 }
@@ -685,9 +754,8 @@ void GsReplacementStore::refreshGenerated(const std::string &name) {
         const auto found = m_impl->generated.find(name);
         if (found == m_impl->generated.end())
             return;
-        found->second.drawn.clear();
-        found->second.over.clear();
-        found->second.failedLogged = false;
+        m_impl->composed.clear();
+        m_impl->bump();
     }
     m_impl->bump();
 }
@@ -774,47 +842,12 @@ GsPictureStatus GsReplacementStore::picture(const GsReplacementKey &key, uint32_
             if (file.inLru && file.lru != m_impl->lru.begin())
                 m_impl->lru.splice(m_impl->lru.begin(), m_impl->lru, file.lru);
             out = {file.image, file.scale, std::filesystem::path(file.path).filename().string()};
-            // A generated picture that draws over files (the numerals over
-            // the pack's sheet) gets the file's picture as its canvas.
-            for (auto &[name, entry] : m_impl->generated) {
-                if (!entry.overFiles ||
-                    !std::any_of(entry.keys.begin(), entry.keys.end(), [&](const GsReplacementKey &listedKey) {
-                        return listedKey == key || listedKey == any;
-                    }))
-                    continue;
-                if (const auto done = entry.over.find(key);
-                    done != entry.over.end() && done->second.base == file.image) {
-                    out = {done->second.drawn, file.scale, name + " over " + out.label};
-                    return GsPictureStatus::Ready;
-                }
-                const std::shared_ptr<const GsReplacementImage> base = file.image;
-                const uint32_t scale = file.scale;
-                GsReplacementGenerator generator = entry.generator;
-                const std::string label = name;
-                lock.unlock();
-                auto image = std::make_shared<GsReplacementImage>();
-                image->width = base->width;
-                image->height = base->height;
-                image->rgba = base->rgba;
-                bool ok = false;
-                try {
-                    ok = generator && generator(scale, native, key.width, key.height, *image) &&
-                         image->width == base->width && image->height == base->height &&
-                         image->rgba.size() == base->rgba.size();
-                } catch (const std::exception &e) {
-                    std::fprintf(stderr, "[texrep] %s: %s\n", label.c_str(), e.what());
-                }
-                lock.lock();
-                const auto again = m_impl->generated.find(label);
-                if (!ok || again == m_impl->generated.end())
-                    return GsPictureStatus::Ready; // the file alone
-                std::fprintf(stderr, "[texrep] drew %s over %s\n", label.c_str(), out.label.c_str());
-                std::shared_ptr<const GsReplacementImage> shared = std::move(image);
-                again->second.over[key] = {base, shared};
-                out.image = shared;
-                out.label = label + " over " + out.label;
-                return GsPictureStatus::Ready;
-            }
+            // Generated pictures that draw over files (the numerals, the
+            // Xbox buttons over the pack's sheet) get the file's picture as
+            // their canvas.
+            const std::string label = out.label;
+            if (m_impl->composeLocked(lock, key, file.scale, native, file.image, out))
+                out.label += " over " + label;
             return GsPictureStatus::Ready;
         }
         if (file.state != Impl::State::Queued) {
@@ -827,51 +860,20 @@ GsPictureStatus GsReplacementStore::picture(const GsReplacementKey &key, uint32_
         return GsPictureStatus::Pending;
     }
 
-    for (auto &[name, entry] : m_impl->generated) {
-        const bool listed = std::any_of(entry.keys.begin(), entry.keys.end(), [&](const GsReplacementKey &listedKey) {
-            return listedKey == key || listedKey == any;
-        });
-        if (!listed)
-            continue;
-        const uint32_t scale = std::clamp<uint32_t>(renderScale, 1u, entry.maxScale);
-        const auto cacheKey = std::make_pair(key, scale);
-        if (const auto drawn = entry.drawn.find(cacheKey); drawn != entry.drawn.end()) {
-            out = {drawn->second, scale, name};
-            return GsPictureStatus::Ready;
-        }
-        // Drawn outside the lock: a font takes some milliseconds.
-        GsReplacementGenerator generator = entry.generator;
-        const std::string label = name;
-        lock.unlock();
-        const auto start = Clock::now();
-        auto image = std::make_shared<GsReplacementImage>();
-        bool ok = false;
-        try {
-            ok = generator && generator(scale, native, key.width, key.height, *image) &&
-                 image->width == key.width * scale && image->height == key.height * scale &&
-                 image->rgba.size() == static_cast<size_t>(image->width) * image->height * 4u;
-        } catch (const std::exception &e) {
-            std::fprintf(stderr, "[texrep] %s: %s\n", label.c_str(), e.what());
-            ok = false;
-        }
-        lock.lock();
-        const auto again = m_impl->generated.find(label);
-        if (again == m_impl->generated.end())
-            return GsPictureStatus::None;
-        if (!ok) {
-            if (!again->second.failedLogged)
-                std::fprintf(stderr, "[texrep] %s: not drawn; the game's texture stays\n", label.c_str());
-            again->second.failedLogged = true;
-            return GsPictureStatus::None;
-        }
-        std::fprintf(stderr, "[texrep] drew %s for %s at %ux in %.1f ms\n", label.c_str(), hex(key.texels).c_str(),
-                     scale, std::chrono::duration<double, std::milli>(Clock::now() - start).count());
-        std::shared_ptr<const GsReplacementImage> shared = std::move(image);
-        again->second.drawn[cacheKey] = shared;
-        out = {shared, scale, label};
-        return GsPictureStatus::Ready;
+    // No file: the generated pictures that list the texture, one over the
+    // other.
+    uint32_t maxScale = 0u;
+    for (const auto &[name, entry] : m_impl->generated)
+        if (std::any_of(entry.keys.begin(), entry.keys.end(),
+                        [&](const GsReplacementKey &listedKey) { return listedKey == key || listedKey == any; }))
+            maxScale = std::max(maxScale, entry.maxScale);
+    if (maxScale == 0u) {
+        ++m_impl->misses;
+        return GsPictureStatus::None;
     }
-    ++m_impl->misses;
+    const uint32_t scale = std::clamp<uint32_t>(renderScale, 1u, maxScale);
+    if (m_impl->composeLocked(lock, key, scale, native, nullptr, out))
+        return GsPictureStatus::Ready;
     return GsPictureStatus::None;
 }
 

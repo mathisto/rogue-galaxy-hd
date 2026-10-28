@@ -456,7 +456,7 @@ bool isCutout(const std::vector<uint8_t> &rgba) {
         const uint8_t a = rgba[i];
         if (a == 0u)
             clear = true;
-        else if (a >= 0x80u)
+        else if (a >= 0x7Cu) // many of the game's opaque texels are 0x7E or 0x7F (the minimaps)
             solid = true;
         else
             return false;
@@ -477,7 +477,7 @@ void GsTextureCache::matchReplacement(const GsTextureKey &key, Entry &entry) {
     entry.hdStamp = replacementStamp();
     entry.hdWait = false;
     const std::vector<GsReplacementShape> shapes = store.shapes(key.psm, key.width, key.height);
-    if (shapes.empty() || !entry.texture || entry.renderable) {
+    if (shapes.empty() || !entry.texture || (entry.renderable && entry.identity.texels == 0u)) {
         dropReplacement(entry);
         learnTexture(key, entry);
         return;
@@ -1284,6 +1284,23 @@ void GsTextureCache::markClutReads(const GsTextureKey &key, GsPageSet &pages) co
     }
 }
 
+// A texture expanded from a target's pages has no name of its own, so no pack
+// picture could stand for it (the field's compass, uploaded into pages an
+// off-screen target owns). When the CPU wrote every word of it there (no page
+// of it is stale), local memory holds its texels: they name it as a build
+// would, and a replacement can bind (Rogue Galaxy: added).
+void GsTextureCache::nameFromLocalMemory(const GsTextureKey &key, Entry &entry) {
+    const GsRegion whole{0u, 0u, key.width, key.height};
+    if (!staleTexelPages(key, whole).none())
+        return;
+    entry.identity.texels = expand(key, whole, true);
+    entry.hdStamp = 0u; // looked up again at its next use
+    if (GsReplacementStore::instance().logging())
+        std::fprintf(stderr, "[texrep] texture tbp0=%05x psm=%02x %ux%u from a target's pages, named %016llx_%016llx\n",
+                     key.tbp0, key.psm, key.width, key.height, static_cast<unsigned long long>(entry.identity.texels),
+                     static_cast<unsigned long long>(entry.identity.clut));
+}
+
 bool GsTextureCache::expandFromTarget(const GsTextureKey &key, Entry &entry, GsRegion region,
                                       bool &handled, std::string &error) {
     handled = false;
@@ -1414,6 +1431,7 @@ bool GsTextureCache::update(const GsTextureKey &key, Entry &entry, std::string &
         entry.identity.texels = 0u;
         entry.clutUploadPending = false;
         entry.dirty.clear();
+        nameFromLocalMemory(key, entry);
         ++m_stats.partialUpdates;
         m_stats.texelsUpdated += static_cast<uint64_t>(region.width()) * region.height();
         return true;
@@ -1504,6 +1522,7 @@ bool GsTextureCache::build(const GsTextureKey &key, Entry &entry, std::string &e
     if (expanded) {
         entry.identity = {};
         entry.identity.clut = hashClutWindow(key);
+        nameFromLocalMemory(key, entry);
         ++m_stats.builds;
         return true;
     }

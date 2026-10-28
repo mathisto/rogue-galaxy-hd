@@ -243,6 +243,8 @@ private:
     // An 8-bit indexed texture whose texels a native CT32 target holds is
     // built on the GPU from that target rather than read back; `handled`
     // stays false when the texture is not one of those.
+    // Names such a texture from local memory when the CPU wrote all of it.
+    void nameFromLocalMemory(const GsTextureKey &key, Entry &entry);
     bool expandFromTarget(const GsTextureKey &key, Entry &entry, GsRegion region, bool &handled,
                           std::string &error);
     // Fills m_clutRgba with the texture's palette as final RGBA.
