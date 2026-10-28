@@ -73,11 +73,21 @@ py -3.12 -I -X utf8 tools\rg_texpack.py build --keys keys.csv ^
   art and the newly extracted pictures by their `gs_key`, and writes
   `pack-manifest.csv` beside the folder. `--clean` removes only the files the
   previous manifest lists, so learned files stay.
-- `--fallback-for-flagged` takes the animevideov3 upscale for the classes
-  `flagged-classes.csv` recommends it for (foliage cut-outs, effects, smooth
-  clouds): softer, fewer posterised leaves and streaks. A pack built so is in
-  `textures\SCUS-97490\flagged-animevideov3\replacements`; try it with
-  `RG_TEXTURE_PACK=textures/SCUS-97490/flagged-animevideov3/replacements`.
+- **Per-class models (the default since 2026-10-28).** The builder takes the
+  upscale `flagged-classes.csv` recommends for each picture: animevideov3
+  for effects (additive glows, sparks, slash trails: x4plus-anime made them
+  greener, bigger and starrier), foliage cut-outs and smooth clouds, and the
+  general `realesrgan-x4plus` model for the **stone_floor** class (paving,
+  cobbles, flagstones and brick: x4plus-anime drew a "cracked mosaic" of
+  invented lines on the side streets and flattened the mortar), the rest
+  x4plus-anime. The stone tiles are a hand-picked list
+  (`upscaled\stone-floor.txt`, 88 Salgin pictures chosen from contact
+  sheets of native against the three models; their x4plus upscales are in
+  `upscaled\x4plus\`). Effects among the newly extracted pictures (`all3`,
+  133) take `animevideov3-extra` by the same rule. `--no-flagged` builds the
+  old all-x4plus-anime pack (`--fallback-for-flagged` is still accepted).
+  Counts: 5,182 x4plus-anime, 2,836 + 12 + 133 animevideov3, 88 x4plus,
+  the rest menu art and the extra sets as before.
 - Atlases: for the TIM2 names given with `--native NAME` (default
   `item_icon`, the icon sheet), the builder links the disc's own picture
   beside the upscale as `native_<key>.png` (see Atlases below). A pack built
@@ -94,6 +104,22 @@ files (8,106 primary, 102 fixed, 2,509 newly extracted, 338 menu art), in
 2 s; plus 29 learned. The other agents' manifests write the PSM in decimal
 (`psm19` is T8): the builder converts their `gs_key`s to the renderer's hex
 names.
+
+### Going back to the old look
+
+The pack before the per-class models (x4plus-anime everywhere) is kept
+beside the default one, as hard links (no space):
+`textures\SCUS-97490\x4plus-anime\replacements` (with the learned files).
+Start the game with
+
+```
+set RG_TEXTURE_PACK=textures/SCUS-97490/x4plus-anime/replacements
+```
+
+for that look; without the variable the default pack is used. To make it
+the default again, rebuild with `--no-flagged` (the index of the pack as it
+was is saved as `textures\SCUS-97490\pack-manifest.before-polish2.csv`).
+Comparison crops and in-game pairs: `research\assets\polish-2\01-*`.
 
 ### Validation (2026-10-28)
 
