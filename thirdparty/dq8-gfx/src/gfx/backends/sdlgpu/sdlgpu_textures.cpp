@@ -208,7 +208,66 @@ GsTextureCache::~GsTextureCache() {
     releasePooled(0u);
 }
 
+void GsTextureCache::releaseVideo() {
+    bool any = false;
+    for (SDL_GPUTexture *&texture : m_video)
+        any = any || texture != nullptr;
+    if (!any)
+        return;
+    beforeRewrite(nullptr);
+    for (size_t i = 0u; i < kVideoTextures; ++i) {
+        if (m_video[i] && m_device.valid())
+            SDL_ReleaseGPUTexture(m_device.handle(), m_video[i]);
+        m_video[i] = nullptr;
+        m_videoSerial[i] = 0u;
+    }
+    m_videoWidth = m_videoHeight = 0u;
+}
+
+SDL_GPUTexture *GsTextureCache::acquireVideo(const GsVideoFrame &frame, std::string &error) {
+    // This frame is already on the GPU: the newest slot written.
+    const size_t shown = (m_videoNext + kVideoTextures - 1u) % kVideoTextures;
+    if (m_video[shown] && m_videoSerial[shown] == frame.serial && m_videoWidth == frame.width &&
+        m_videoHeight == frame.height)
+        return m_video[shown];
+    if (frame.width == 0u || frame.height == 0u || frame.rgba.size() < static_cast<size_t>(frame.width) * frame.height * 4u) {
+        error = "video frame has no pixels";
+        return nullptr;
+    }
+    if (m_videoWidth != frame.width || m_videoHeight != frame.height)
+        releaseVideo();
+    if (!m_video[m_videoNext]) {
+        SDL_GPUTextureCreateInfo info{};
+        info.type = SDL_GPU_TEXTURETYPE_2D;
+        info.format = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
+        info.width = frame.width;
+        info.height = frame.height;
+        info.layer_count_or_depth = 1u;
+        info.num_levels = 1u;
+        info.sample_count = SDL_GPU_SAMPLECOUNT_1;
+        info.usage = SDL_GPU_TEXTUREUSAGE_SAMPLER;
+        m_video[m_videoNext] = SDL_CreateGPUTexture(m_device.handle(), &info);
+        if (!m_video[m_videoNext]) {
+            error = std::string("SDL_CreateGPUTexture(video): ") + SDL_GetError();
+            return nullptr;
+        }
+        m_videoWidth = frame.width;
+        m_videoHeight = frame.height;
+    } else {
+        // Draws still queued with this slot's old picture land first.
+        beforeRewrite(m_video[m_videoNext]);
+    }
+    if (!uploadRect(m_video[m_videoNext], 0u, 0u, frame.width, frame.height, frame.rgba.data(), error))
+        return nullptr;
+    m_videoSerial[m_videoNext] = frame.serial;
+    SDL_GPUTexture *texture = m_video[m_videoNext];
+    m_videoNext = (m_videoNext + 1u) % kVideoTextures;
+    GsVideoOverride::instance().uploads.fetch_add(1u, std::memory_order_relaxed);
+    return texture;
+}
+
 void GsTextureCache::reset() {
+    releaseVideo();
     if (!m_entries.empty())
         beforeRewrite(nullptr);
     if (m_device.valid()) {
@@ -329,6 +388,22 @@ SDL_GPUTexture *GsTextureCache::acquire(const GSDrawState &state, std::string &e
         *scale = 1u;
     if (levels)
         *levels = 1u;
+    // A video picture published for this texture stands in for it (the
+    // movie player's TBP; Rogue Galaxy: added).
+    if (GsVideoOverride &video = GsVideoOverride::instance(); video.active()) {
+        const std::shared_ptr<const GsVideoFrame> frame = video.current();
+        if (frame && frame->tbp0 == key.tbp0 && key.width == frame->guestWidth && key.height >= frame->guestHeight) {
+            if (SDL_GPUTexture *texture = acquireVideo(*frame, error)) {
+                video.draws.fetch_add(1u, std::memory_order_relaxed);
+                if (scale)
+                    *scale = frame->scale;
+                return texture;
+            }
+            // Falls through to the guest's texture on failure.
+            std::fprintf(stderr, "[video] %s; the game's picture stays\n", error.c_str());
+            error.clear();
+        }
+    }
     const int64_t nowUs = std::chrono::duration_cast<std::chrono::microseconds>(
                               std::chrono::steady_clock::now().time_since_epoch())
                               .count();

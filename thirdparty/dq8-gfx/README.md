@@ -350,3 +350,10 @@ window's size, as it would be shown: the menu then draws, its `RG_UI_SCRIPT`
 runs and screenshots (F12, the script's `screenshot`) are written, for
 unattended tests of the menu and of the picture's filters (Rogue Galaxy:
 added; =1 leaves that work out, for benchmarks).
+
+- `sdlgpu_video.h`, `GsTextureCache::acquireVideo` (HD movies): a video picture
+  a host decoder publishes (`GsVideoOverride`, RGBA8 at a whole multiple of the
+  guest texture's size) stands in for the texture a draw would build from the
+  movie player's TBP; the cache binds it with the multiple as the physical
+  texels per GS texel, like a texture-pack picture, from three GPU textures
+  used in turn. Nothing happens while no picture is published.

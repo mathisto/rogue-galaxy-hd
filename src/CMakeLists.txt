@@ -78,6 +78,7 @@ add_executable(roguegalaxy
     free_camera.cpp
     hotkeys.cpp
     movie_audio.cpp
+    movie_hd.cpp
     quick_scenes.cpp
     return_hook.cpp
     instant_text.cpp

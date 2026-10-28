@@ -24,6 +24,7 @@
 #include "instant_text.h"
 #include "hd_text.h"
 #include "map_chests.h"
+#include "movie_hd.h"
 #include "loading_screen.h"
 #include "opening.h"
 #include "quick_scenes.h"
@@ -130,6 +131,8 @@ void applyGameOption(const std::string &key, bool on)
         rg::loading::setInstantRecap(on);
     else if (key == "instant_text")
         rg::instanttext::setEnabled(on);
+    else if (key == "hd_movies")
+        rg::hdmovie::setEnabled(on);
     else if (key == "map_chests")
         rg::mapchests::setEnabled(on);
     else if (key == "dev_tools")
@@ -568,6 +571,13 @@ std::unique_ptr<dq8::ui::Overlay> createMenu(PS2Runtime &runtime, dq8::gfx::SdlG
          false, 0, 0, 0, "", 1, false},
         {"skip_opening", "Skip the opening",
          "At boot, the Sony and Level-5 logos and the opening movie give way to the title screen at once.", false},
+        {"hd_movies", "HD movies",
+         "The cutscenes play from upscaled 1080p video files, one a movie in the HD movie folder (RG_HD_MOVIES, "
+         "else textures/SCUS-97490/movies, as 00/TITLE01.mkv, 01/01_01.mkv ...), with the game's own sound and "
+         "timing. A movie without a file, or one this PC cannot decode in time, plays as the game has it. On by "
+         "default when the folder holds files; found now: " +
+             std::to_string(rg::hdmovie::fileCount()) + " of " + std::to_string(rg::hdmovie::kMovieCount) + ".",
+         rg::hdmovie::fileCount() > 0},
         {"instant_loading_recap", "Show the loading recap at once",
          "When a game loads, the story so far appears whole instead of line by line, and Press X comes as soon as "
          "it has loaded.",

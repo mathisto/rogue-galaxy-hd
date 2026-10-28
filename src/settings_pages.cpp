@@ -91,6 +91,7 @@ constexpr Row kSwitches[] = {
     {"skip_opening", "Skip the Opening", Kind::Switch, ""},
     {"instant_loading_recap", "Quick Loading Recap", Kind::Switch, ""},
     {"instant_text", "Instant Text", Kind::Switch, ""},
+    {"hd_movies", "HD Movies", Kind::Switch, ""},
     {"map_chests", "Chests on Map", Kind::Switch, ""},
     {"faster_camera", "Faster Camera", Kind::Switch, ""},
     {"free_camera", "Free Camera", Kind::Switch, ""},

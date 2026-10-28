@@ -11,6 +11,7 @@
 
 #include "gfx/backends/sdlgpu/sdlgpu_replacements.h"
 #include "gfx/backends/sdlgpu/sdlgpu_targets.h"
+#include "gfx/backends/sdlgpu/sdlgpu_video.h"
 #include "gfx/gs/gs_vram.h"
 
 #include "runtime/gs/gs_types.h"
@@ -130,6 +131,12 @@ public:
     // replacement with generated smaller levels).
     SDL_GPUTexture *acquire(const GSDrawState &state, std::string &error, const GsRegion *sampled = nullptr,
                             uint32_t *scale = nullptr, uint32_t *levels = nullptr);
+
+    // The published video picture (GsVideoOverride) as a GPU texture: the
+    // newest frame is uploaded the first time a draw asks for it, into one
+    // of three textures taken in turn so a draw still queued with the
+    // previous frame keeps its picture (Rogue Galaxy: added). Null on failure.
+    SDL_GPUTexture *acquireVideo(const GsVideoFrame &frame, std::string &error);
 
     // Why a range of local memory stopped being trustworthy. Kept apart
     // because the two have very different fixes: a host write really did
@@ -405,6 +412,14 @@ private:
     std::vector<uint8_t> m_rawRow;
     std::vector<uint8_t> m_idxRow;
     std::vector<uint32_t> m_clutRgba;
+
+    // acquireVideo's textures, the serial each holds, and the next to fill.
+    static constexpr size_t kVideoTextures = 3u;
+    SDL_GPUTexture *m_video[kVideoTextures] = {};
+    uint64_t m_videoSerial[kVideoTextures] = {};
+    uint32_t m_videoWidth = 0u, m_videoHeight = 0u;
+    size_t m_videoNext = 0u;
+    void releaseVideo();
 
     SdlGpuUploadPool m_uploadPool;
     GsTextureCacheStats m_stats{};

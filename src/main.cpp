@@ -40,6 +40,7 @@
 #include "hd_text.h"
 #endif
 #include "map_chests.h"
+#include "movie_hd.h"
 #include "opening.h"
 #include "widescreen.h"
 #include "quick_scenes.h"
@@ -161,6 +162,9 @@ int run(int argc, char **argv)
     rg::libc::install(runtime);
     rg::vu0::install(runtime);
     rg::movie::install(runtime);
+#if defined(RG_HAS_SDLGPU)
+    rg::hdmovie::install(runtime);
+#endif
     rg::loading::install(runtime);
     rg::widescreen::install(runtime);
     rg::opening::install(runtime);
