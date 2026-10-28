@@ -1,0 +1,30 @@
+# Boxes tools/rg_psart_scan.py does not find, added by tools/rg_psart_emit.py
+# (--manual): <name-or-hash> <x> <y> <w> <h> <Kind> [text], texels of the
+# exported picture. Measured on the exports, checked on the contact sheets
+# (2026-10-28, polish 2).
+
+# The DualShock drawing of the controls boards (its dark body, cable included):
+# an Xbox-style pad over it.
+Loading_TGS   182 156 148 119 Pad
+hb0290        190 174 130 105 Pad
+hb0300        190 174 130 105 Pad
+
+# Words in the pictures' own lettering.
+6113cfc894b5c686   1   2  15  14 Word LS       # btl_st01 (EN): "L3" of SKIP: L3 button
+6113cfc894b5c686 145 160  36  14 Word MENU     # btl_st01 (EN): "START"
+hbstart           31   8 175  17 Word Press the Menu button
+6113cfc894b5c686 221 111  32  23 LS          # btl_st01 (EN): the left stick's mushroom (SKIP: L3)
+6113cfc894b5c686 221 143  32  25 LS          # btl_st01 (EN): the same, pressed
+hb0290             73 356  20  17 Word LS     # "L3 button: Switch Characters"
+hb0290            275 356  20  17 Word RS     # "R3 button: First-person View"
+hb0300             74 356  20  17 Word LS     # "L3 button: Skip Suggestion"
+hb0300            277 356  20  17 Word RS
+dff8225aed7b109b  311 351  21  23 Word RS     # Loading_TGS (EN): "R3button/First-personView"
+
+# The right sticks' mushrooms (Camera Control), which the stick template misses.
+hb0290            279 335  28  20 RS
+hb0300            281 335  28  20 RS
+dff8225aed7b109b  278 337  30  24 RS     # Loading_TGS (EN)
+fbf85bc59e387a44  299 337  30  24 RS     # Loading_TGS (JP)
+hb0290            201 333  28  20 LS
+hb0300            201 333  28  20 LS

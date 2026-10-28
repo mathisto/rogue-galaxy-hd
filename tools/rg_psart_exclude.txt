@@ -25,3 +25,7 @@ hb0440
 hb0470
 hb0490
 hb0500
+
+# polish 2: the left sticks' boxes as found reach the line of text below; smaller ones in rg_psart_manual.txt
+b79c216ff5b7062d 198 330
+4791c3855d753abd 198 330

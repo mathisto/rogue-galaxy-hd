@@ -30,13 +30,20 @@ def flat(img):
     return a[..., :3] * a[..., 3:4] + 0.5 * (1 - a[..., 3:4])
 
 
+# EXTRA="kind=crop.png;..." adds templates cut from other pictures (the
+# START/SELECT pictograms, the d-pad, the sticks: kept outside the
+# repository, they are the game's art); ONLY_EXTRA=1 drops gaiji2's eight.
+extra = [e.split('=', 1) for e in os.environ.get('EXTRA', '').split(';') if e]
+sources = [] if os.environ.get('ONLY_EXTRA') == '1' else \
+    [(kind, G.crop((x, y, x + w, y + h))) for kind, (x, y, w, h) in cells.items()]
+sources += [(kind, Image.open(path).convert('RGBA')) for kind, path in extra]
+SCALES = [float(v) for v in os.environ.get('SCALES', '0.55,0.65,0.75,0.85,1.0,1.15,1.3,1.45,1.6').split(',')]
 templates = []
-for kind, (x, y, w, h) in cells.items():
-    crop = G.crop((x, y, x + w, y + h))
+for kind, crop in sources:
     # trim transparent margins
     bb = crop.getchannel('A').point(lambda v: 255 if v > 16 else 0).getbbox()
     crop = crop.crop(bb)
-    for s in (0.55, 0.65, 0.75, 0.85, 1.0, 1.15, 1.3, 1.45, 1.6):
+    for s in SCALES:
         tw, th = max(6, round(crop.width * s)), max(6, round(crop.height * s))
         full = flat(crop.resize((tw, th), Image.LANCZOS))
         # The inner part only (all opaque), so the background never counts.

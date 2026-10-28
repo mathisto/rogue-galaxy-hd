@@ -131,6 +131,11 @@ struct DigitRow
     const char *extra;
     // Italic digits: how far the top leans right, per pixel of height.
     float slant = 0.0f;
+    // The outline's width in texels (the battle's big digits have a thick
+    // one), and how much wider than the font's own the digits may be drawn
+    // to fill their cells as the game's bold ones did.
+    float outline = 1.0f;
+    float widen = 1.0f;
 };
 
 // The digit rows of a sheet redrawn with `font`'s digits: each in the box the
@@ -165,11 +170,27 @@ enum class Button : uint8_t
     RB,
     LT,
     RT,
+    // The pictograms the gaiji sheet has no cell for (polish 2): START and
+    // SELECT become the Menu and View buttons, the sticks' mushrooms the
+    // thumbsticks LS and RS, the d-pad's four arrows Xbox's cross.
+    Menu,
+    View,
+    LS,
+    RS,
+    DPad,
+    // The DualShock drawn on the controls boards (its box: the drawing's
+    // dark body): an Xbox-style pad over it, its parts where the
+    // DualShock's are so the boards' lines still point at them.
+    Pad,
+    // A word in the picture's own lettering ("START", "L3") redrawn as
+    // `text` ("MENU", "LS") in the label font, in its box and colours.
+    Word,
 };
 struct ButtonPatch
 {
     int16_t x, y, w, h; // the game's icon, texels of the picture
     Button button;
+    const char *text = nullptr; // Button::Word
 };
 
 // The Xbox buttons drawn over `patches`, each filling the game's icon's box

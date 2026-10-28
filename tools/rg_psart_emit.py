@@ -1,45 +1,116 @@
-"""Writes src/button_art_table.inc from a psscan csv.
+"""Writes src/button_art_table.inc from psscan csvs.
 
-psemit.py <scan.csv> <ui/all/unique.csv> <out.inc> [exclude-file]
-exclude-file lines: <hash> <x> <y>  (a found box to drop), or <hash> (all of it)
+rg_psart_emit.py <scan.csv>[,<scan2.csv>...] <ui/all/unique.csv> <out.inc> [exclude-file]
+                 [--base existing.inc] [--manual tools/rg_psart_manual.txt]
+
+exclude-file lines: <hash> <x> <y>  (a found box to drop), or <hash> / <name> (all of it)
+--base keeps the boxes of an earlier table (its sheets and patches, parsed back), so a scan
+  with new templates adds to it rather than replacing it (the first scan's csv is not kept).
+--manual adds boxes no template finds: lines <name-or-hash> <x> <y> <w> <h> <Kind> [text]
+  (Kind: a Button name, e.g. Pad, Word, Menu; text for Word). A name applies to every
+  picture of that name.
+Scan kinds: cross circle square triangle L1 R1 L2 R2 (gaiji2's cells), start select dpad
+stick (the pictograms of the controls boards: Menu, View, DPad, and LS or RS by the side
+of the picture the stick is on).
 """
-import csv, sys
+import csv, re, sys
 from collections import OrderedDict
 
-scan, unique, out = sys.argv[1], sys.argv[2], sys.argv[3]
+args = list(sys.argv[1:])
+base = manual = None
+if '--base' in args:
+    i = args.index('--base'); base = args[i + 1]; del args[i:i + 2]
+if '--manual' in args:
+    i = args.index('--manual'); manual = args[i + 1]; del args[i:i + 2]
+scans, unique, out = [s for s in args[0].split(',') if s], args[1], args[2]
 excl = set()
-if len(sys.argv) > 4:
-    for line in open(sys.argv[4]):
+if len(args) > 3:
+    for line in open(args[3]):
         line = line.split('#')[0].split()
         if line:
             excl.add(tuple(line))
-keys = {r['hash']: r for r in csv.DictReader(open(unique, encoding='utf-8'))}
-button = {'cross': 'A', 'circle': 'B', 'square': 'X', 'triangle': 'Y', 'L1': 'LB', 'R1': 'RB', 'L2': 'LT', 'R2': 'RT'}
+rows_u = list(csv.DictReader(open(unique, encoding='utf-8')))
+keys = {r['hash']: r for r in rows_u}
+button = {'cross': 'A', 'circle': 'B', 'square': 'X', 'triangle': 'Y', 'L1': 'LB', 'R1': 'RB', 'L2': 'LT', 'R2': 'RT',
+          'start': 'Menu', 'select': 'View', 'dpad': 'DPad'}
+
+# (gs_key, name, hash) -> list of (x, y, w, h, Button, text, comment)
 sheets = OrderedDict()
-for r in csv.DictReader(open(scan)):
-    bw, sc = int(r['bw']), float(r['score'])
-    if bw < 13 or (bw <= 16 and sc < 0.95) or sc < 0.82:
-        continue  # small round things (list bullets, specks in photos) look alike
-    if (r['name'],) in excl or (r['hash'],) in excl or (r['hash'], r['x'], r['y']) in excl:
-        continue
-    k = keys.get(r['hash'], {}).get('gs_key', '')
-    if not k:
-        continue
-    sheets.setdefault((k, r['name'], r['hash']), []).append(r)
-patches, table = [], []
-for (k, name, h), rows in sorted(sheets.items(), key=lambda kv: kv[0][1]):
+
+
+def sheet_for(h):
+    r = keys.get(h, {})
+    k = r.get('gs_key', '')
+    return (k, r.get('name', ''), h) if k else None
+
+
+if base:
+    text = open(base, encoding='utf-8').read()
+    head, tail = text.split('kButtonSheets[]')
+    patch_re = re.compile(r'\{(-?\d+), (-?\d+), (\d+), (\d+), Button::(\w+)(?:, "([^"]*)")?\}, // (.*)')
+    patches = [m.groups() for m in patch_re.finditer(head)]
+    sheet_re = re.compile(r'\{0x(\w+)ull, 0x(\w+)u, (\d+)u, (\d+)u, (\d+)u, (\d+)u\}, // (\S+) \((\w+)\)')
+    for texels, psm, w, h, first, count, name, hsh in sheet_re.findall(tail):
+        s = sheet_for(hsh)
+        if not s:
+            continue
+        lst = sheets.setdefault(s, [])
+        for p in patches[int(first):int(first) + int(count)]:
+            what = p[6].split(' ', 1)[1] if ' ' in p[6] else p[6]
+            lst.append((int(p[0]), int(p[1]), int(p[2]), int(p[3]), p[4], p[5] or '', what))
+
+for scan in scans:
+    for r in csv.DictReader(open(scan)):
+        bw, sc = int(r['bw']), float(r['score'])
+        if bw < 13 or (bw <= 16 and sc < 0.95) or sc < 0.82:
+            continue  # small round things (list bullets, specks in photos) look alike
+        if (r['name'],) in excl or (r['hash'],) in excl or (r['hash'], r['x'], r['y']) in excl:
+            continue
+        s = sheet_for(r['hash'])
+        if not s:
+            continue
+        kind = r['kind']
+        b = button.get(kind)
+        if kind == 'stick':
+            b = 'LS' if int(r['x']) + bw / 2 < int(r['w']) / 2 else 'RS'
+        lst = sheets.setdefault(s, [])
+        x, y = int(r['x']), int(r['y'])
+        if any(abs(x - p[0]) < 4 and abs(y - p[1]) < 4 for p in lst):
+            continue
+        lst.append((x, y, bw, int(r['bh']), b, '', kind))
+
+if manual:
+    for line in open(manual, encoding='utf-8'):
+        line = line.split('#')[0].split()
+        if not line:
+            continue
+        who, x, y, w, h, kind = line[:6]
+        text = ' '.join(line[6:])
+        for r in rows_u:
+            if who in (r['name'], r['hash']):
+                s = sheet_for(r['hash'])
+                if s:
+                    sheets.setdefault(s, []).append((int(x), int(y), int(w), int(h), kind, text, 'manual ' + kind))
+
+patch_lines, table = [], []
+for (k, name, h), rows in sorted(sheets.items(), key=lambda kv: (kv[0][1], kv[0][2])):
     texels, clut, size, psm = k.split('_')
     w, hh = size.split('x')
     psm = int(psm[3:])
-    first = len(patches)
-    for r in sorted(rows, key=lambda r: (int(r['y']), int(r['x']))):
-        patches.append(f"    {{{r['x']}, {r['y']}, {r['bw']}, {r['bh']}, Button::{button[r['kind']]}}}, // {name} {r['kind']}")
+    first = len(patch_lines)
+    # The pad first, the icons over it, the words last (an icon's cleared disc may reach a word).
+    order = sorted(rows, key=lambda p: ({'Pad': 0, 'Word': 2}.get(p[4], 1), p[1], p[0]))
+    for x, y, bw, bh, b, text, what in order:
+        t = ', "%s"' % text if b == 'Word' else ''
+        patch_lines.append(f"    {{{x}, {y}, {bw}, {bh}, Button::{b}{t}}}, // {name} {what}")
     table.append(f"    {{0x{texels}ull, 0x{psm:02x}u, {w}u, {hh}u, {first}u, {len(rows)}u}}, // {name} ({h})")
 with open(out, 'w', newline='\n') as f:
-    f.write('// Generated by tools/rg_psart_scan.py from the UI textures exported by\n'
-            '// im3_export.py (research 11): the PlayStation buttons found in each\n'
-            '// picture (texels of the picture; no art here). Edit the exclusions in\n'
-            '// tools/rg_psart_exclude.txt and regenerate rather than this file.\n')
-    f.write('constexpr ButtonPatch kButtonPatches[] = {\n' + '\n'.join(patches) + '\n};\n')
+    f.write('// Generated by tools/rg_psart_emit.py from tools/rg_psart_scan.py\'s boxes over\n'
+            '// the UI textures exported by im3_export.py (research 11) and the boxes of\n'
+            '// tools/rg_psart_manual.txt: where each picture has PlayStation art\n'
+            '// (texels of the picture; no art here). Edit the exclusions in\n'
+            '// tools/rg_psart_exclude.txt or the manual boxes and regenerate rather\n'
+            '// than this file.\n')
+    f.write('constexpr ButtonPatch kButtonPatches[] = {\n' + '\n'.join(patch_lines) + '\n};\n')
     f.write('constexpr ButtonSheet kButtonSheets[] = {\n' + '\n'.join(table) + '\n};\n')
-print(len(table), 'pictures,', len(patches), 'buttons')
+print(len(table), 'pictures,', len(patch_lines), 'boxes')

@@ -535,7 +535,8 @@ Ink measure(const Font &font, char c, float size, float squeeze)
 
 // One size and squeeze for all of `chars`, so their ink fits maxW x maxH:
 // as tall as `cap` allows, condensed across down to 72% before it shrinks.
-void fitGlyphs(const Font &font, const char *chars, float cap, float maxW, float maxH, float &size, float &squeeze)
+void fitGlyphs(const Font &font, const char *chars, float cap, float maxW, float maxH, float &size, float &squeeze,
+               float widen = 1.0f)
 {
     float inkW = 0.0f, inkH = 0.0f;
     for (const char *c = chars; *c; ++c)
@@ -551,6 +552,8 @@ void fitGlyphs(const Font &font, const char *chars, float cap, float maxW, float
     const float fitH = std::min(1.0f, maxH / inkH);
     size = cap * fitH;
     const float fitW = maxW / (inkW * fitH);
+    if (fitW > 1.0f && widen > 1.0f)
+        squeeze = std::min(fitW, widen);
     if (fitW < 1.0f)
     {
         squeeze = std::max(0.72f, fitW);
@@ -642,6 +645,545 @@ void blend(const Canvas &canvas, std::vector<uint8_t> &out, uint32_t outWidth, u
         }
 }
 
+float capsule(float x, float y, float ax, float ay, float bx, float by, float r)
+{
+    const float px = x - ax, py = y - ay, vx = bx - ax, vy = by - ay;
+    const float t = std::clamp((px * vx + py * vy) / (vx * vx + vy * vy), 0.0f, 1.0f);
+    return std::hypot(px - vx * t, py - vy * t) - r;
+}
+
+float box(float x, float y, float x0, float y0, float x1, float y1, float r)
+{
+    return roundedBox(x, y, x0, y0, x1, y1, r, r);
+}
+
+constexpr float kKnobTop[3] = {0.44f, 0.44f, 0.47f};
+constexpr float kKnobBottom[3] = {0.22f, 0.22f, 0.24f};
+
+// The round base the Menu, View and stick icons share: a dark rim and a grey
+// dome, 22 units across like the face buttons.
+void roundBase(Canvas &canvas, float scale)
+{
+    const float cx = 11.0f * scale, cy = 11.0f * scale;
+    canvas.paint([&](float x, float y) { return edge(circle(x, y, cx, cy, 10.0f * scale)); }, kOutline, kOutline);
+    canvas.paint([&](float x, float y) { return edge(circle(x, y, cx, cy, 8.9f * scale)); }, kKnobTop, kKnobBottom);
+}
+
+// Xbox's Menu button: three white bars.
+void menuIcon(Canvas &canvas, float scale)
+{
+    roundBase(canvas, scale);
+    const float cx = 11.0f * scale, cy = 11.0f * scale;
+    for (int i = -1; i <= 1; ++i)
+    {
+        const float y = cy + static_cast<float>(i) * 2.9f * scale;
+        canvas.paint([&](float px, float py) {
+            return edge(box(px, py, cx - 4.6f * scale, y - 0.8f * scale, cx + 4.6f * scale, y + 0.8f * scale,
+                            0.6f * scale));
+        },
+                     kWhite, kWhite);
+    }
+}
+
+// Xbox's View button: two overlapping windows, the front one solid.
+void viewIcon(Canvas &canvas, float scale)
+{
+    roundBase(canvas, scale);
+    const float cx = 11.0f * scale, cy = 11.0f * scale, line = 0.65f * scale;
+    canvas.paint([&](float px, float py) {
+        const float d = box(px, py, cx - 5.0f * scale, cy - 4.0f * scale, cx + 1.8f * scale, cy + 1.6f * scale,
+                            1.0f * scale);
+        return edge(std::abs(d) - line);
+    },
+                 kWhite, kWhite);
+    canvas.paint([&](float px, float py) {
+        return edge(box(px, py, cx - 1.8f * scale, cy - 1.6f * scale, cx + 5.0f * scale, cy + 4.0f * scale,
+                        1.0f * scale));
+    },
+                 kWhite, kWhite);
+}
+
+// A thumbstick from above: rim, dome, the dished top, and its name.
+void stickIcon(Canvas &canvas, const Font &font, const char *name, float scale)
+{
+    roundBase(canvas, scale);
+    const float cx = 11.0f * scale, cy = 11.0f * scale;
+    canvas.paint([&](float x, float y) { return edge(circle(x, y, cx, cy, 6.6f * scale)); }, kKnobBottom, kKnobTop);
+    label(canvas, font, name, cx, cy + 0.1f * scale, 6.4f * scale, 13.0f * scale, scale);
+}
+
+// Xbox's d-pad: a cross on a dark round base.
+void dpadIcon(Canvas &canvas, float scale)
+{
+    const float cx = 11.0f * scale, cy = 11.0f * scale, arm = 9.6f * scale, half = 3.3f * scale;
+    const auto cross = [&](float x, float y, float grow) {
+        return std::min(box(x, y, cx - arm - grow, cy - half - grow, cx + arm + grow, cy + half + grow, 1.2f * scale),
+                        box(x, y, cx - half - grow, cy - arm - grow, cx + half + grow, cy + arm + grow, 1.2f * scale));
+    };
+    canvas.paint([&](float x, float y) { return edge(cross(x, y, 1.1f * scale)); }, kOutline, kOutline);
+    canvas.paint([&](float x, float y) { return edge(cross(x, y, 0.0f)); }, kKnobTop, kKnobBottom);
+    canvas.paint([&](float x, float y) { return edge(circle(x, y, cx, cy, 1.6f * scale)) * 0.45f; }, kOutline,
+                 kOutline);
+}
+
+// The mean colour of the picture's opaque texels in a ring (the disc a
+// pictogram sits on); `coverage` the share of them opaque.
+Rgb ringColour(const uint8_t *native, uint32_t width, uint32_t height, float cx, float cy, float r0, float r1,
+               float &coverage)
+{
+    Rgb sum;
+    int n = 0, all = 0;
+    for (int y = static_cast<int>(cy - r1) - 1; y <= static_cast<int>(cy + r1) + 1; ++y)
+        for (int x = static_cast<int>(cx - r1) - 1; x <= static_cast<int>(cx + r1) + 1; ++x)
+        {
+            if (x < 0 || y < 0 || x >= static_cast<int>(width) || y >= static_cast<int>(height))
+                continue;
+            const float d = std::hypot(static_cast<float>(x) + 0.5f - cx, static_cast<float>(y) + 0.5f - cy);
+            if (d < r0 || d > r1)
+                continue;
+            ++all;
+            const uint8_t *p = native + (static_cast<size_t>(y) * width + x) * 4u;
+            if (p[3] < 0x40u)
+                continue;
+            for (int c = 0; c < 3; ++c)
+                sum.c[c] += p[c];
+            ++n;
+        }
+    coverage = all ? static_cast<float>(n) / static_cast<float>(all) : 0.0f;
+    for (int c = 0; c < 3; ++c)
+        sum.c[c] = n ? sum.c[c] / static_cast<float>(n) : 0.0f;
+    return sum;
+}
+
+// Clears a pictogram before its Xbox icon goes over it: a disc of the
+// colour around it, or of nothing where the picture is transparent there.
+void clearDisc(const uint8_t *native, uint32_t width, uint32_t height, std::vector<uint8_t> &out, uint32_t outWidth,
+               uint32_t outHeight, const ButtonPatch &patch, float s)
+{
+    const float cx = static_cast<float>(patch.x) + static_cast<float>(patch.w) * 0.5f;
+    const float cy = static_cast<float>(patch.y) + static_cast<float>(patch.h) * 0.5f;
+    const float r = std::max(patch.w, patch.h) * 0.5f;
+    float coverage = 0.0f;
+    const Rgb ring = ringColour(native, width, height, cx, cy, r + 0.3f, r + 2.3f, coverage);
+    const bool transparent = coverage < 0.5f;
+    const float R = (r + 0.6f) * s;
+    for (int y = static_cast<int>((cy - r - 1.0f) * s); y < static_cast<int>((cy + r + 1.0f) * s); ++y)
+        for (int x = static_cast<int>((cx - r - 1.0f) * s); x < static_cast<int>((cx + r + 1.0f) * s); ++x)
+        {
+            if (x < 0 || y < 0 || x >= static_cast<int>(outWidth) || y >= static_cast<int>(outHeight))
+                continue;
+            const float a = edge(circle(static_cast<float>(x) + 0.5f, static_cast<float>(y) + 0.5f, cx * s, cy * s, R));
+            if (a <= 0.0f)
+                continue;
+            uint8_t *texel = out.data() + (static_cast<size_t>(y) * outWidth + x) * 4u;
+            if (transparent)
+            {
+                texel[3] = static_cast<uint8_t>(std::lround(texel[3] * (1.0f - a)));
+                continue;
+            }
+            for (int c = 0; c < 3; ++c)
+                texel[c] = static_cast<uint8_t>(std::lround(ring.c[c] * a + texel[c] * (1.0f - a)));
+        }
+}
+
+// A word of the picture's lettering redrawn: its ink's colours measured as
+// drawLetterBoxes does, `text` fitted to the ink's box with a texel-wide
+// outline; the box is cleared first (paintGlyph writes all of it).
+void drawWord(const Font &font, const uint8_t *native, uint32_t width, std::vector<uint8_t> &out, uint32_t outWidth,
+              const ButtonPatch &patch, float s)
+{
+    const auto at = [&](int x, int y) { return native + (static_cast<size_t>(y) * width + x) * 4u; };
+    float lo = 1e9f, hi = -1e9f;
+    int ix0 = patch.w, ix1 = -1, iy0 = patch.h, iy1 = -1;
+    for (int y = 0; y < patch.h; ++y)
+        for (int x = 0; x < patch.w; ++x)
+        {
+            const uint8_t *p = at(patch.x + x, patch.y + y);
+            if (p[3] <= 8u)
+                continue;
+            ix0 = std::min(ix0, x);
+            ix1 = std::max(ix1, x);
+            iy0 = std::min(iy0, y);
+            iy1 = std::max(iy1, y);
+            if (p[3] >= 0x40u)
+            {
+                lo = std::min(lo, luminance(p));
+                hi = std::max(hi, luminance(p));
+            }
+        }
+    if (ix1 < 0 || hi < lo || !patch.text)
+        return;
+    Rgb edgeColor;
+    float edgeAlpha = 0.0f;
+    int edgeCount = 0;
+    std::vector<Rgb> fill(static_cast<size_t>(patch.h));
+    std::vector<int> fillCount(static_cast<size_t>(patch.h), 0);
+    for (int y = 0; y < patch.h; ++y)
+        for (int x = 0; x < patch.w; ++x)
+        {
+            const uint8_t *p = at(patch.x + x, patch.y + y);
+            if (p[3] < 0x40u)
+                continue;
+            const float l = luminance(p);
+            if (l <= lo + 0.3f * (hi - lo))
+            {
+                for (int c = 0; c < 3; ++c)
+                    edgeColor.c[c] += p[c];
+                edgeAlpha += std::min(1.0f, p[3] / 128.0f);
+                ++edgeCount;
+            }
+            else if (l >= lo + 0.55f * (hi - lo))
+            {
+                for (int c = 0; c < 3; ++c)
+                    fill[y].c[c] += p[c];
+                ++fillCount[y];
+            }
+        }
+    int first = -1;
+    for (int y = 0; y < patch.h; ++y)
+        if (fillCount[y])
+        {
+            for (int c = 0; c < 3; ++c)
+                fill[y].c[c] /= static_cast<float>(fillCount[y]);
+            if (first < 0)
+                first = y;
+        }
+    if (first < 0)
+        return;
+    for (int y = 0; y < patch.h; ++y)
+        if (!fillCount[y])
+        {
+            int best = first;
+            for (int k = 0; k < patch.h; ++k)
+                if (fillCount[k] && std::abs(k - y) < std::abs(best - y))
+                    best = k;
+            fill[y] = fill[best];
+        }
+    if (edgeCount)
+    {
+        for (int c = 0; c < 3; ++c)
+            edgeColor.c[c] /= static_cast<float>(edgeCount);
+        edgeAlpha /= static_cast<float>(edgeCount);
+    }
+    else
+    {
+        edgeColor.c[0] = edgeColor.c[1] = edgeColor.c[2] = 20.0f;
+        edgeAlpha = 1.0f;
+    }
+    const int w = patch.w * static_cast<int>(s), h = patch.h * static_cast<int>(s);
+    const float outlinePx = 1.0f * s;
+    // The letters' size and place from their fill (the light texels): on a
+    // plate the ink's box is the plate's.
+    int fx0 = patch.w, fx1 = -1, fy0 = patch.h, fy1 = -1;
+    for (int y = 0; y < patch.h; ++y)
+        for (int x = 0; x < patch.w; ++x)
+        {
+            const uint8_t *p = at(patch.x + x, patch.y + y);
+            if (p[3] >= 0x40u && luminance(p) >= lo + 0.55f * (hi - lo))
+            {
+                fx0 = std::min(fx0, x);
+                fx1 = std::max(fx1, x);
+                fy0 = std::min(fy0, y);
+                fy1 = std::max(fy1, y);
+            }
+        }
+    (void)ix0, (void)ix1, (void)iy0, (void)iy1;
+    const float cap = static_cast<float>(fy1 - fy0 + 1) * s;
+    const float limit = static_cast<float>(fx1 - fx0 + 1) * s + outlinePx;
+    std::vector<float> mask(static_cast<size_t>(w) * h, 0.0f);
+    font.drawLabel(patch.text, (static_cast<float>(fx0 + fx1) + 1.0f) * 0.5f * s,
+                   (static_cast<float>(fy0 + fy1) + 1.0f) * 0.5f * s, cap, limit, mask, w, h);
+    // What is behind the word: the box's border texels that are neither
+    // outline nor fill (a plate the word sits on), or nothing.
+    Rgb back;
+    float backAlpha = 0.0f;
+    int backCount = 0, border = 0;
+    for (int y = 0; y < patch.h; ++y)
+        for (int x = 0; x < patch.w; ++x)
+        {
+            if (x != 0 && y != 0 && x != patch.w - 1 && y != patch.h - 1)
+                continue;
+            ++border;
+            const uint8_t *p = at(patch.x + x, patch.y + y);
+            if (p[3] < 0x40u)
+                continue;
+            for (int c = 0; c < 3; ++c)
+                back.c[c] += p[c];
+            backAlpha += std::min(1.0f, p[3] / 128.0f);
+            ++backCount;
+        }
+    const bool plate = border && backCount * 10 >= border * 9;
+    if (plate)
+    {
+        for (int c = 0; c < 3; ++c)
+            back.c[c] /= static_cast<float>(backCount);
+        backAlpha /= static_cast<float>(backCount);
+    }
+    const std::vector<float> outline = grow(mask, w, h, outlinePx);
+    const int left = patch.x * static_cast<int>(s), top = patch.y * static_cast<int>(s);
+    for (int y = 0; y < h; ++y)
+    {
+        const float ny = std::clamp((static_cast<float>(y) + 0.5f) / s - 0.5f, 0.0f, static_cast<float>(patch.h - 1));
+        const int i0 = static_cast<int>(ny), i1 = std::min(i0 + 1, patch.h - 1);
+        const float t = ny - static_cast<float>(i0);
+        for (int x = 0; x < w; ++x)
+        {
+            const size_t at2 = static_cast<size_t>(y) * w + x;
+            const float aF = mask[at2], aO = outline[at2] * edgeAlpha;
+            const float a = aF + aO * (1.0f - aF);
+            uint8_t *texel = out.data() + (static_cast<size_t>(top + y) * outWidth + left + x) * 4u;
+            float rgb[3];
+            for (int c = 0; c < 3; ++c)
+            {
+                const float f = fill[i0].c[c] + (fill[i1].c[c] - fill[i0].c[c]) * t;
+                rgb[c] = a > 0.0f ? (f * aF + edgeColor.c[c] * aO * (1.0f - aF)) / a : edgeColor.c[c];
+            }
+            const float under = plate ? backAlpha : 0.0f;
+            const float total = a + under * (1.0f - a);
+            for (int c = 0; c < 3; ++c)
+            {
+                const float v = total > 0.0f ? (rgb[c] * a + back.c[c] * under * (1.0f - a)) / total : rgb[c];
+                texel[c] = static_cast<uint8_t>(std::lround(std::clamp(v, 0.0f, 255.0f)));
+            }
+            texel[3] = gsAlpha(total);
+        }
+    }
+}
+
+// The DualShock drawing of a controls board turned into an Xbox-style pad.
+// Its parts go where the DualShock's are (measured on Loading_TGS, as
+// fractions of the drawing's box), so the board's lines still end on the
+// d-pad, the sticks, Menu and View and the face buttons; the DualShock's
+// texels the new body does not cover (its cable, the tips of its grips) are
+// filled from the board beside them, and its lines over the body are kept.
+void drawPad(const Font &labels, const uint8_t *native, uint32_t width, uint32_t height, std::vector<uint8_t> &out,
+             uint32_t outWidth, uint32_t outHeight, const ButtonPatch &patch, float s)
+{
+    const auto at = [&](int x, int y) { return native + (static_cast<size_t>(y) * width + x) * 4u; };
+    const auto inside = [&](int x, int y) {
+        return x >= 0 && y >= 0 && x < static_cast<int>(width) && y < static_cast<int>(height);
+    };
+    // The DualShock's own texels: dark or neutral grey, opaque.
+    const auto padTexel = [&](int x, int y) {
+        if (!inside(x, y))
+            return false;
+        const uint8_t *p = at(x, y);
+        if (p[3] < 0x40u)
+            return false;
+        const int mx = std::max({p[0], p[1], p[2]}), mn = std::min({p[0], p[1], p[2]});
+        return mx < 60 || (mx - mn < 16 && luminance(p) < 165.0f);
+    };
+    const int margin = 3;
+    const int nx0 = patch.x - margin, ny0 = patch.y - margin, nx1 = patch.x + patch.w + margin,
+              ny1 = patch.y + patch.h + margin;
+    std::vector<uint8_t> ds(static_cast<size_t>(nx1 - nx0) * (ny1 - ny0), 0u);
+    for (int y = ny0; y < ny1; ++y)
+        for (int x = nx0; x < nx1; ++x)
+            ds[static_cast<size_t>(y - ny0) * (nx1 - nx0) + (x - nx0)] = padTexel(x, y) ? 1u : 0u;
+    const auto dsAt = [&](int x, int y) {
+        return x >= nx0 && y >= ny0 && x < nx1 && y < ny1 && ds[static_cast<size_t>(y - ny0) * (nx1 - nx0) + (x - nx0)];
+    };
+    // The board's lines where they cross the DualShock: bluish, light, with
+    // its texels close by.
+    const auto lineTexel = [&](int x, int y) {
+        if (!inside(x, y))
+            return false;
+        const uint8_t *p = at(x, y);
+        if (p[3] < 0x40u || static_cast<int>(p[2]) - static_cast<int>(p[0]) < 20 || luminance(p) < 72.0f)
+            return false;
+        int near = 0;
+        for (int dy = -2; dy <= 2; ++dy)
+            for (int dx = -2; dx <= 2; ++dx)
+                near += dsAt(x + dx, y + dy) ? 1 : 0;
+        return near >= 6;
+    };
+
+    const float bw = static_cast<float>(patch.w) * s, bh = static_cast<float>(patch.h) * s;
+    const float ox = static_cast<float>(patch.x) * s, oy = static_cast<float>(patch.y) * s;
+    const float u = bw / 147.0f; // Loading_TGS's drawing is 147 texels wide
+    const int cw = static_cast<int>(std::ceil(bw)), ch = static_cast<int>(std::ceil(bh));
+    Canvas canvas(cw, ch);
+    const auto bodyDistance = [&](float x, float y) {
+        const float top = box(x, y, 0.04f * bw, 0.17f * bh, 0.96f * bw, 0.66f * bh, 0.22f * bh);
+        const float mid = box(x, y, 0.22f * bw, 0.30f * bh, 0.78f * bw, 0.92f * bh, 0.16f * bh);
+        const float left = capsule(x, y, 0.20f * bw, 0.42f * bh, 0.13f * bw, 0.84f * bh, 0.125f * bw);
+        const float right = capsule(x, y, 0.80f * bw, 0.42f * bh, 0.87f * bw, 0.84f * bh, 0.125f * bw);
+        return std::min(std::min(top, mid), std::min(left, right));
+    };
+    // Triggers behind the bumpers, then the body.
+    for (const float sx : {0.235f, 0.765f})
+    {
+        const float trigTop[3] = {0.30f, 0.30f, 0.33f}, trigBottom[3] = {0.18f, 0.18f, 0.20f};
+        canvas.paint([&](float x, float y) {
+            return edge(box(x, y, (sx - 0.10f) * bw, 0.0f, (sx + 0.10f) * bw, 0.16f * bh, 0.06f * bh));
+        },
+                     trigTop, trigBottom);
+        const float bumpTop[3] = {0.36f, 0.36f, 0.39f}, bumpBottom[3] = {0.22f, 0.22f, 0.24f};
+        canvas.paint([&](float x, float y) {
+            return edge(box(x, y, (sx - 0.15f) * bw, 0.11f * bh, (sx + 0.13f) * bw, 0.24f * bh, 0.06f * bh));
+        },
+                     bumpTop, bumpBottom);
+    }
+    const float rim[3] = {0.05f, 0.05f, 0.06f};
+    canvas.paint([&](float x, float y) { return edge(bodyDistance(x, y)); }, rim, rim);
+    const float bodyTop[3] = {0.27f, 0.27f, 0.30f}, bodyBottom[3] = {0.13f, 0.13f, 0.15f};
+    canvas.paint([&](float x, float y) { return edge(bodyDistance(x, y) + 1.3f * u); }, bodyTop, bodyBottom);
+    // D-pad.
+    {
+        const float dx = 0.204f * bw, dy = 0.508f * bh, arm = 10.5f * u, half = 3.6f * u;
+        const float base[3] = {0.10f, 0.10f, 0.11f};
+        canvas.paint([&](float x, float y) { return edge(circle(x, y, dx, dy, 13.5f * u)); }, base, base);
+        canvas.paint([&](float x, float y) {
+            return edge(std::min(box(x, y, dx - arm, dy - half, dx + arm, dy + half, 1.2f * u),
+                                 box(x, y, dx - half, dy - arm, dx + half, dy + arm, 1.2f * u)));
+        },
+                     kKnobTop, kKnobBottom);
+    }
+    // Sticks.
+    for (const float sx : {0.367f, 0.639f})
+    {
+        const float cx = sx * bw, cy = 0.78f * bh;
+        const float well[3] = {0.06f, 0.06f, 0.07f};
+        canvas.paint([&](float x, float y) { return edge(circle(x, y, cx, cy, 12.5f * u)); }, well, well);
+        const float domeTop[3] = {0.38f, 0.38f, 0.41f}, domeBottom[3] = {0.20f, 0.20f, 0.22f};
+        canvas.paint([&](float x, float y) { return edge(circle(x, y, cx, cy, 10.5f * u)); }, domeTop, domeBottom);
+        const float dishTop[3] = {0.20f, 0.20f, 0.22f}, dishBottom[3] = {0.30f, 0.30f, 0.33f};
+        canvas.paint([&](float x, float y) { return edge(circle(x, y, cx, cy - 0.6f * u, 7.0f * u)); }, dishTop,
+                     dishBottom);
+    }
+    // View and Menu where SELECT and START were, a round button above.
+    for (const float sx : {0.401f, 0.599f})
+    {
+        canvas.paint([&](float x, float y) { return edge(circle(x, y, sx * bw, 0.508f * bh, 4.2f * u)); }, kOutline,
+                     kOutline);
+        const float top[3] = {0.55f, 0.55f, 0.58f}, bottom[3] = {0.35f, 0.35f, 0.38f};
+        canvas.paint([&](float x, float y) { return edge(circle(x, y, sx * bw, 0.508f * bh, 3.3f * u)); }, top, bottom);
+    }
+    canvas.paint([&](float x, float y) { return edge(circle(x, y, 0.5f * bw, 0.30f * bh, 5.6f * u)); }, kOutline,
+                 kOutline);
+    {
+        const float top[3] = {0.58f, 0.58f, 0.61f}, bottom[3] = {0.38f, 0.38f, 0.41f};
+        canvas.paint([&](float x, float y) { return edge(circle(x, y, 0.5f * bw, 0.30f * bh, 4.5f * u)); }, top,
+                     bottom);
+    }
+    // Face buttons: Y, B, A, X where Triangle, Circle, Cross and Square were.
+    struct Face
+    {
+        float ox, oy;
+        char letter;
+        float color[3];
+    };
+    const Face faces[] = {{0.0f, -1.0f, 'Y', {0.93f, 0.72f, 0.10f}},
+                          {1.0f, 0.0f, 'B', {0.86f, 0.22f, 0.20f}},
+                          {0.0f, 1.0f, 'A', {0.36f, 0.70f, 0.20f}},
+                          {-1.0f, 0.0f, 'X', {0.20f, 0.45f, 0.90f}}};
+    for (const Face &face : faces)
+    {
+        const float cx = 0.803f * bw + face.ox * 13.0f * u, cy = 0.508f * bh + face.oy * 13.0f * u;
+        canvas.paint([&](float x, float y) { return edge(circle(x, y, cx, cy, 6.0f * u)); }, kOutline, kOutline);
+        const float top[3] = {std::min(1.0f, face.color[0] * 1.1f + 0.05f), std::min(1.0f, face.color[1] * 1.1f + 0.05f),
+                              std::min(1.0f, face.color[2] * 1.1f + 0.05f)};
+        const float bottom[3] = {face.color[0] * 0.7f, face.color[1] * 0.7f, face.color[2] * 0.7f};
+        canvas.paint([&](float x, float y) { return edge(circle(x, y, cx, cy, 5.0f * u)); }, top, bottom);
+        if (5.0f * u >= 6.0f)
+            label(canvas, labels, std::string(1, face.letter), cx, cy + 0.1f * u, 5.2f * u, 8.0f * u, u * 0.6f);
+    }
+
+    // The DualShock's texels outside the new body: the board beside them.
+    const int rx0 = std::max(0, nx0 * static_cast<int>(s)), ry0 = std::max(0, ny0 * static_cast<int>(s));
+    const int rx1 = std::min(static_cast<int>(outWidth), nx1 * static_cast<int>(s));
+    const int ry1 = std::min(static_cast<int>(outHeight), ny1 * static_cast<int>(s));
+    // The new body may go where the DualShock was (and two texels round it)
+    // or over the board's blue ground, never over its other art (labels, the
+    // figures hb0290 and hb0300 draw in front of the pad).
+    {
+        const auto allowed = [&](int x, int y) {
+            // Lettering (yellow or white fill) is the board's, even beside
+            // the DualShock.
+            if (inside(x, y) && !dsAt(x, y))
+            {
+                const uint8_t *p = at(x, y);
+                const bool yellow = p[0] > 150 && p[1] > 120 && p[2] < 110;
+                if (p[3] >= 0x40u && (yellow || luminance(p) > 185.0f))
+                    return false;
+            }
+            for (int dy = -2; dy <= 2; ++dy)
+                for (int dx = -2; dx <= 2; ++dx)
+                    if (dsAt(x + dx, y + dy))
+                        return true;
+            if (!inside(x, y))
+                return false;
+            const uint8_t *p = at(x, y);
+            return p[3] >= 0x40u && static_cast<int>(p[2]) - static_cast<int>(p[0]) >= 12 && luminance(p) < 130.0f;
+        };
+        std::vector<uint8_t> ok(ds.size(), 0u);
+        for (int y = ny0; y < ny1; ++y)
+            for (int x = nx0; x < nx1; ++x)
+                ok[static_cast<size_t>(y - ny0) * (nx1 - nx0) + (x - nx0)] = allowed(x, y) ? 1u : 0u;
+        for (int y = 0; y < canvas.h; ++y)
+            for (int x = 0; x < canvas.w; ++x)
+            {
+                const int nx = static_cast<int>((ox + static_cast<float>(x) + 0.5f) / s);
+                const int ny = static_cast<int>((oy + static_cast<float>(y) + 0.5f) / s);
+                const bool keep = nx >= nx0 && ny >= ny0 && nx < nx1 && ny < ny1 &&
+                                  ok[static_cast<size_t>(ny - ny0) * (nx1 - nx0) + (nx - nx0)];
+                if (!keep)
+                    std::fill_n(canvas.rgba.data() + (static_cast<size_t>(y) * canvas.w + x) * 4u, 4, 0.0f);
+            }
+    }
+    const std::vector<uint8_t> before = out;
+    const auto covered = [&](int x, int y) {
+        const int cx = x - static_cast<int>(ox), cy = y - static_cast<int>(oy);
+        if (cx < 0 || cy < 0 || cx >= canvas.w || cy >= canvas.h)
+            return 0.0f;
+        return canvas.rgba[(static_cast<size_t>(cy) * canvas.w + cx) * 4u + 3u];
+    };
+    const auto padAtOut = [&](int x, int y) {
+        return dsAt(static_cast<int>(static_cast<float>(x) / s), static_cast<int>(static_cast<float>(y) / s));
+    };
+    for (int y = ry0; y < ry1; ++y)
+        for (int x = rx0; x < rx1; ++x)
+        {
+            if (!padAtOut(x, y) || covered(x, y) >= 0.99f)
+                continue;
+            // The nearest texels either side that are the board's.
+            int l = x, r = x;
+            while (l > rx0 - static_cast<int>(8 * s) && l > 0 && padAtOut(l, y))
+                --l;
+            while (r < rx1 + static_cast<int>(8 * s) && r < static_cast<int>(outWidth) - 1 && padAtOut(r, y))
+                ++r;
+            const uint8_t *a = before.data() + (static_cast<size_t>(y) * outWidth + l) * 4u;
+            const uint8_t *b = before.data() + (static_cast<size_t>(y) * outWidth + r) * 4u;
+            const float t = r > l ? static_cast<float>(x - l) / static_cast<float>(r - l) : 0.5f;
+            uint8_t *texel = out.data() + (static_cast<size_t>(y) * outWidth + x) * 4u;
+            for (int c = 0; c < 4; ++c)
+                texel[c] = static_cast<uint8_t>(std::lround(a[c] * (1.0f - t) + b[c] * t));
+        }
+    blend(canvas, out, outWidth, outHeight, static_cast<int>(ox), static_cast<int>(oy));
+    // The lines again over the body.
+    for (int y = ry0; y < ry1; ++y)
+        for (int x = rx0; x < rx1; ++x)
+        {
+            if (covered(x, y) <= 0.0f ||
+                !lineTexel(static_cast<int>(static_cast<float>(x) / s), static_cast<int>(static_cast<float>(y) / s)))
+                continue;
+            // Over the body, the d-pad and the sticks only: not across the
+            // coloured face buttons.
+            {
+                const float *p = canvas.rgba.data() +
+                                 (static_cast<size_t>(y - static_cast<int>(oy)) * canvas.w + (x - static_cast<int>(ox))) * 4u;
+                const float a = std::max(p[3], 1e-4f);
+                const float mx = std::max({p[0], p[1], p[2]}) / a, mn = std::min({p[0], p[1], p[2]}) / a;
+                if (mx - mn > 0.12f)
+                    continue;
+            }
+            const uint8_t *a = before.data() + (static_cast<size_t>(y) * outWidth + x) * 4u;
+            uint8_t *texel = out.data() + (static_cast<size_t>(y) * outWidth + x) * 4u;
+            for (int c = 0; c < 3; ++c)
+                texel[c] = static_cast<uint8_t>(std::lround(a[c] * 0.85f + texel[c] * 0.15f));
+        }
+}
+
 } // namespace
 
 bool drawButtonPatches(const Font &labels, uint32_t scale, const uint8_t *native, uint32_t width, uint32_t height,
@@ -656,10 +1198,27 @@ bool drawButtonPatches(const Font &labels, uint32_t scale, const uint8_t *native
     for (size_t i = 0; i < count; ++i)
     {
         const ButtonPatch &patch = patches[i];
+        if (patch.x < 0 || patch.y < 0 || patch.x + patch.w > static_cast<int>(width) ||
+            patch.y + patch.h > static_cast<int>(height))
+            continue;
+        if (patch.button == Button::Pad)
+        {
+            drawPad(labels, native, width, height, out, outWidth, outHeight, patch, s);
+            continue;
+        }
+        if (patch.button == Button::Word)
+        {
+            drawWord(labels, native, width, out, outWidth, patch, s);
+            continue;
+        }
         const float rw = static_cast<float>(patch.w) * s, rh = static_cast<float>(patch.h) * s;
         const float cx = (static_cast<float>(patch.x) + static_cast<float>(patch.w) * 0.5f) * s;
         const float cy = (static_cast<float>(patch.y) + static_cast<float>(patch.h) * 0.5f) * s;
-        const bool face = patch.button <= Button::Y;
+        const bool pictogram = patch.button >= Button::Menu;
+        // The pictograms are drawn shapes, not round icons: cleared first.
+        if (pictogram)
+            clearDisc(native, width, height, out, outWidth, outHeight, patch, s);
+        const bool face = patch.button <= Button::Y || pictogram;
         // The icon's own unit: a face icon is 22 units across, a shoulder 32 x 20,
         // grown a little so the game's rim is covered.
         const float unit = face ? std::max(rw, rh) / 20.0f : std::max(rw / 30.0f, rh / 18.0f);
@@ -691,6 +1250,24 @@ bool drawButtonPatches(const Font &labels, uint32_t scale, const uint8_t *native
             break;
         case Button::RT:
             shoulderButton(canvas, labels, "RT", true, unit);
+            break;
+        case Button::Menu:
+            menuIcon(canvas, unit);
+            break;
+        case Button::View:
+            viewIcon(canvas, unit);
+            break;
+        case Button::LS:
+            stickIcon(canvas, labels, "LS", unit);
+            break;
+        case Button::RS:
+            stickIcon(canvas, labels, "RS", unit);
+            break;
+        case Button::DPad:
+            dpadIcon(canvas, unit);
+            break;
+        case Button::Pad:
+        case Button::Word:
             break;
         }
         blend(canvas, out, outWidth, outHeight, static_cast<int>(std::lround(cx - cw * 0.5f)),
@@ -883,18 +1460,22 @@ bool drawDigitRows(const Font &font, uint32_t scale, const uint8_t *native, uint
             }
 
         // The game's outline is a texel wide.
-        const float outlinePx = 1.0f * s;
+        const float outlinePx = row.outline * s;
         const float inkW = static_cast<float>(ix1 - ix0 + 1) * s, inkH = static_cast<float>(iy1 - iy0 + 1) * s;
         const float cap = inkH - 2.0f * outlinePx;
         const float cy = (static_cast<float>(iy0) + static_cast<float>(iy1) + 1.0f) * 0.5f * s;
         const int cellW = row.pitch * static_cast<int>(scale), bandH = row.band * static_cast<int>(scale);
         float size = cap, squeeze = 1.0f;
-        fitGlyphs(font, "0123456789", cap, inkW - 2.0f * outlinePx - row.slant * cap, cap, size, squeeze);
+        fitGlyphs(font, "0123456789", cap, inkW - 2.0f * outlinePx - row.slant * cap, cap, size, squeeze, row.widen);
         for (int d = 0; d < 10; ++d)
         {
             std::vector<float> mask(static_cast<size_t>(cellW) * bandH, 0.0f);
             const float cx = (static_cast<float>(ix0) + static_cast<float>(ix1) + 1.0f) * 0.5f * s;
             glyphMask(font, static_cast<char>('0' + d), cx, cy, size, squeeze, true, mask, cellW, bandH);
+            // The battle's thick-outlined digits are bolder than the font's
+            // Medium: its strokes grown a little.
+            if (row.outline > 1.0f)
+                mask = grow(mask, cellW, bandH, 0.5f * (row.outline - 1.0f) * s);
             if (row.slant != 0.0f)
             {
                 // Leaned like the game's italic digits, about their middle.
