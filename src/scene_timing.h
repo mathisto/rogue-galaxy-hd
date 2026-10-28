@@ -63,6 +63,12 @@ void setSixtyFpsPreferred(bool on);
 // of something that plays at the wrong speed.
 void requestStateReport();
 
+// A movie is playing (between the player's start and its shutdown, or in
+// the modal loop one plays in); any thread. Fast-forward waits while it is:
+// its sound comes at the audio device's pace, so a movie played faster
+// would leave it further behind with every frame (graphics.cpp).
+bool moviePlaying();
+
 // The systems made to take the step (RG_STEP_FIXES: unset, 1 or "all" for
 // every one, 0 or "none" for none, or a comma list of the names below, e.g.
 // RG_STEP_FIXES=clock,gravity).

@@ -69,6 +69,9 @@ struct HostServices {
     std::function<void(bool)> setPaused;
     // The game's speed against real time; 0 runs it as fast as it can go.
     std::function<void(double)> setSpeed;
+    // The controller's fast-forward on L2 and R2 switched on or off (Rogue
+    // Galaxy: added).
+    std::function<void(bool)> setTriggerFastForward;
     // Frames the game has finished drawing, for the counter; presents are
     // counted instead when it is empty.
     std::function<uint64_t()> completedRenders;
@@ -127,6 +130,13 @@ public:
     void notify(std::string text, Icon icon = Icon::Info, double seconds = 3.0);
     void setUserPaused(bool paused);
     void setFastForward(bool on);
+    // Fast-forward for as long as a key or button is held, whatever F4 has
+    // it at; let go, the speed is F4's again (Rogue Galaxy: added).
+    void setFastForwardHeld(bool held);
+    void toggleFastForward() { setFastForward(!m_fastForward); }
+    // A speed for this run instead of the settings' (RG_FAST_FORWARD_SPEED),
+    // not saved; below 0 for none (Rogue Galaxy: added).
+    void setFastForwardSpeedOverride(float speed);
     // Waits for the next key or controller input and binds it.
     void beginBindingCapture(gfx::PadInput input, bool keyboard, int slot);
     // Waiting for one, so a key of the host's own is not taken for it too
@@ -218,6 +228,13 @@ private:
     bool canPause() const { return static_cast<bool>(m_host.setPaused); }
     bool canChangeSpeed() const { return static_cast<bool>(m_host.setSpeed); }
     std::string speedLabel(float speed) const;
+    // Rogue Galaxy: added. Either F4's fast-forward or a held one is on.
+    bool fastForwarding() const { return m_fastForward || m_fastForwardHeld; }
+    // The speed fast-forward runs at: the override's, or the settings'.
+    float fastForwardRate() const;
+    // Hands the host the speed the two make.
+    void applySpeed();
+    void setFastForwardSpeed(float speed);
     SDL_GamepadType displayedControllerType() const;
     double now() const;
 
@@ -247,6 +264,8 @@ private:
     bool m_userPaused = false;
     bool m_hostPaused = false;
     bool m_fastForward = false;
+    bool m_fastForwardHeld = false;
+    float m_speedOverride = -1.0f;
     bool m_gamepadNavHeld = false;
     bool m_keyboardBindings = false;
     int m_selectBindings = -1;

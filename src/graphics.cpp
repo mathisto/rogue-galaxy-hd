@@ -20,6 +20,7 @@
 #include "dev_tools.h"
 #include "draw_distance.h"
 #include "free_camera.h"
+#include "hotkeys.h"
 #include "instant_text.h"
 #include "map_chests.h"
 #include "loading_screen.h"
@@ -71,15 +72,27 @@ dq8::ui::Overlay *g_menu = nullptr;
 PS2Runtime *g_runtime = nullptr;
 
 // The game's speed: the menu's (fast-forward, 0 unpaced) times a quick
-// scene's (src/quick_scenes.h); the main thread's alone.
+// scene's (src/quick_scenes.h); the main thread's alone. A movie plays at
+// 1 whatever they say: its sound keeps the audio device's pace (the IOP
+// runs in step with it), and the picture would run away from it.
 double g_menuSpeed = 1.0;
 double g_sceneSpeed = 1.0;
+bool g_movie = false;
 
 void applySpeed()
 {
     if (g_runtime)
     {
-        g_runtime->eeScheduler().setHostSpeed(g_menuSpeed > 0.0 ? g_menuSpeed * g_sceneSpeed : 0.0);
+        const double speed = g_movie ? 1.0 : g_menuSpeed > 0.0 ? g_menuSpeed * g_sceneSpeed : 0.0;
+        // A line at each change, for scripted checks of the speed keys.
+        static double logged = 1.0;
+        if (speed != logged)
+        {
+            logged = speed;
+            std::fprintf(stderr, "[rg] speed %.2fx (menu %.2f, scene %.2f%s)%s\n", speed, g_menuSpeed, g_sceneSpeed,
+                         g_movie ? ", movie" : "", speed == 0.0 ? ", unpaced" : "");
+        }
+        g_runtime->eeScheduler().setHostSpeed(speed);
     }
 }
 
@@ -90,9 +103,11 @@ void followQuickScenes()
         return;
     }
     const double scene = rg::quickscenes::speed(g_runtime->memory().getRDRAM());
-    if (scene != g_sceneSpeed)
+    const bool movie = rg::timing::moviePlaying();
+    if (scene != g_sceneSpeed || movie != g_movie)
     {
         g_sceneSpeed = scene;
+        g_movie = movie;
         applySpeed();
     }
 }
@@ -305,6 +320,9 @@ bool pump(void *userData)
     }
     uint32_t held = 0u, pressed = 0u, sticks = 0u;
     backend->hostPadState(held, pressed, sticks);
+    // L2 and R2 drive fast-forward (src/hotkeys.h), but not the free
+    // camera's, which moves with them.
+    rg::hotkeys::filterPad(held, pressed, rg::freecamera::enabled());
     ps2PadPublishHostState(held, pressed, rg::pad::shapeSticks(sticks));
     return true;
 }
@@ -411,6 +429,22 @@ std::unique_ptr<dq8::ui::Overlay> createMenu(PS2Runtime &runtime, dq8::gfx::SdlG
         g_menuSpeed = speed;
         applySpeed();
     };
+    // L2 and R2 for fast-forward, the menu's setting or, for this run,
+    // RG_FAST_FORWARD_TRIGGERS=0 or 1 whatever it says.
+    host.setTriggerFastForward = [](bool on) {
+        const std::string triggers = env("RG_FAST_FORWARD_TRIGGERS", "");
+        rg::hotkeys::setTriggersEnabled(triggers.empty() ? on : triggers != "0");
+    };
+    rg::hotkeys::setHandlers({
+        [](bool held) {
+            if (g_menu)
+                g_menu->setFastForwardHeld(held);
+        },
+        [] {
+            if (g_menu)
+                g_menu->toggleFastForward();
+        },
+    });
     // The game's flips: frames it finished, not presents, which go on while
     // it is paused.
     host.completedRenders = [] { return guestFlips(); };
@@ -524,6 +558,15 @@ std::unique_ptr<dq8::ui::Overlay> createMenu(PS2Runtime &runtime, dq8::gfx::SdlG
         return nullptr;
     }
     menu->applySettings();
+    // RG_FAST_FORWARD_SPEED=N: fast-forward's speed for this run (1.5, 2, 3,
+    // 4, 8, ...; 0 or "max" unpaced), not saved; picking one in the menu
+    // takes over.
+    if (const std::string speed = env("RG_FAST_FORWARD_SPEED", ""); !speed.empty())
+    {
+        const double value = speed == "max" ? 0.0 : std::strtod(speed.c_str(), nullptr);
+        menu->setFastForwardSpeedOverride(static_cast<float>(std::clamp(value, 0.0, 16.0)));
+        std::printf("[rg] fast-forward speed for this run: %s\n", value > 0.0 ? speed.c_str() : "unpaced");
+    }
     backend.setOverlay(menu.get());
     return menu;
 }

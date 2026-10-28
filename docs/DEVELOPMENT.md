@@ -67,7 +67,9 @@ thread contexts) and a thread's call chain read from the dump with
 | `PS2X_EE_ROUNDING=nearest` | Diagnostic: guest float math rounds to nearest, the host default, instead of toward zero as the EE does (patch 0003) |
 | `RG_GS_DEPTH_READS=queue` | Serve the game's depth readbacks through the GS worker queue |
 | `RG_MUTE=1` | No sound output (the IOP still runs) |
-| `RG_INPUT="30:CROSS:150,..."` | Scripted pad input: seconds, buttons (`+`-joined; `LUP` etc. for the left stick, `RUP` etc. for the right), milliseconds; with `RG_INPUT_CLOCK=pad` both numbers count the game's pad reads, so a script replays alike at any host speed |
+| `RG_FAST_FORWARD_SPEED=N` | Fast-forward's speed for this run, not saved (1.5, 2, 3, 4, 8, ...; `0` or `max` unpaced); picking one in the menu takes over. Each change of the game's speed is logged as a `[rg] speed` line (`src/hotkeys.h`, `graphics.cpp`) |
+| `RG_FAST_FORWARD_TRIGGERS=0\|1` | L2 and R2 control fast-forward (R2 held, L2 on and off) for this run whatever the menu says; with `1` the game no longer gets them |
+| `RG_INPUT="30:CROSS:150,..."` | Scripted pad input: seconds, buttons (`+`-joined; `LUP` etc. for the left stick, `RUP` etc. for the right), milliseconds; with `RG_INPUT_CLOCK=pad` both numbers count the game's pad reads, so a script replays alike at any host speed. `HOST` among the buttons sends them to the host's pad instead, as a held controller's, for the host's shortcuts: `20:HOST+R2:3000` fast-forwards for three seconds |
 | `RG_TRACE=0xADDR,...` | Log calls of main-ELF functions with guest thread, sp, ra and a0-a3 (`RG_TRACE_PEEK` words, `RG_TRACE_ARG0` offsets from a0, `RG_TRACE_LIMIT` calls each, default 16) |
 | `RG_DUMP=0xFUNC:file` | Append each call of a `FUNC(dst, src, size)` to file: dst, size and the bytes at src |
 | `RG_WATCH=0xADDR,...` | Print guest words, I/O registers included, every `RG_WATCH_MS` (default 1000) |
@@ -110,4 +112,5 @@ thread contexts) and a thread's call chain read from the dump with
 | `RG_GS_FRAMELOG=file@N` | Every batch, transfer and clear of one frame, once the game's pad read count reaches N, with GS memory as `file.vram` (`@N#K` also before batch K); `RG_GS_FRAMESKIP=A-B,...` leaves batches of that frame out (`A-` to the end); `RG_GS_TRACE_BEFORE=M` turns the backend's target trace (`DQ8_GFX_TRACE_TARGETS`, a line per transfer and ownership move) on from M pad reads before that frame to its end |
 | `RG_SELFTEST=gs` | Check the code changed in vendored dependencies, then exit |
 | `DQ8_GFX_SCREENSHOT_DIR`, `DQ8_GFX_SCREENSHOT_EVERY` | Framework: write every Nth frame as PPM |
+| `DQ8_GFX_HIDDEN_WINDOW=1\|2` | The window is never shown, for unattended runs; `2` still composes each frame off screen at its size, so the menu draws, `RG_UI_SCRIPT` runs and its `screenshot` steps (and F12) are written, into `screenshots` beside the settings file (`RG_SETTINGS_FILE`) |
 | `PS2X_AUDIO_DUMP=file` | Framework: copy of the audio output, raw 48 kHz s16 stereo |

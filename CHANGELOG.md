@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- Fast-forward from the controller: R2 held runs the game faster while
+  held, L2 switches fast-forward on and off; on the keyboard, ` (left of 1)
+  held, and F4 as before. The game no longer gets L2 and R2 while they do
+  this (F1 > Interface > Pause and speed turns it off).
+- Fast-forward speeds 1.5x and 8x besides 2x, 3x, 4x and Max; movies keep
+  normal speed so their sound stays in step.
+
 ## 0.1.0 (pre-release)
 
 First release: the source plus an installer that builds the game on your PC

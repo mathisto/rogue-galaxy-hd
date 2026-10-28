@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "Stubs/Pad.h"
+#include "hotkeys.h"
 
 namespace rg::debug
 {
@@ -26,6 +27,9 @@ struct Step
     uint8_t ly = 0x80;
     uint8_t rx = 0x80; // right stick
     uint8_t ry = 0x80;
+    // HOST: the buttons go to the host pad, as a held controller's would,
+    // for the host's own shortcuts (src/hotkeys.h), not to the game.
+    bool host = false;
 };
 
 // Bit order of the PS2 pad's button word (active-low on the wire).
@@ -42,6 +46,11 @@ bool parseButtons(const std::string &text, Step &step)
     bool any = false;
     while (std::getline(ss, name, '+'))
     {
+        if (name == "HOST")
+        {
+            step.host = true;
+            continue;
+        }
         // Left stick pushed all the way: LUP LDOWN LLEFT LRIGHT.
         if (name == "LUP" || name == "LDOWN" || name == "LLEFT" || name == "LRIGHT")
         {
@@ -137,7 +146,15 @@ void startInputScript()
             std::printf("[input] %.1fs, pad read %u: buttons 0x%04X for %u %s\n", elapsed, pressedAt, step.mask,
                         step.ms, padClock ? "reads" : "ms");
             std::fflush(stdout);
-            ps2_stubs::setPadOverrideState(static_cast<uint16_t>(~step.mask), step.lx, step.ly, step.rx, step.ry);
+            if (step.host)
+            {
+                rg::hotkeys::setInjectedButtons(step.mask);
+            }
+            else
+            {
+                ps2_stubs::setPadOverrideState(static_cast<uint16_t>(~step.mask), step.lx, step.ly, step.rx,
+                                               step.ry);
+            }
             if (padClock)
             {
                 waitForReads(pressedAt + step.ms);
@@ -146,7 +163,14 @@ void startInputScript()
             {
                 std::this_thread::sleep_for(std::chrono::milliseconds(step.ms));
             }
-            ps2_stubs::setPadOverrideState(0xFFFFu, kCenter, kCenter, kCenter, kCenter);
+            if (step.host)
+            {
+                rg::hotkeys::setInjectedButtons(0u);
+            }
+            else
+            {
+                ps2_stubs::setPadOverrideState(0xFFFFu, kCenter, kCenter, kCenter, kCenter);
+            }
         }
         ps2_stubs::clearPadOverrideState();
     }).detach();

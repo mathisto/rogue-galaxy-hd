@@ -51,6 +51,9 @@ struct Settings {
 
     // Game
     float fastForwardSpeed = 2.0f; // 0 runs unpaced
+    // L2 switches fast-forward and R2 held fast-forwards, the game no longer
+    // seeing either (Rogue Galaxy: added; src/hotkeys.h).
+    bool triggerFastForward = true;
     // The game's own switches (HostServices::gameOptions), by key, as the
     // file has them; one it does not have takes the option's default (Rogue
     // Galaxy: added).

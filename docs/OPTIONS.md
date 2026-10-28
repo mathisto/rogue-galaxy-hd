@@ -11,17 +11,35 @@
 - **Sound**: volume and muting.
 - **Controls**: controller and keyboard remapping, dead zones.
 - **Game**: the game options below.
-- **Interface**: the menu's size, notifications, pause and fast-forward,
-  the frame-rate counter.
+- **Interface**: the menu's size, notifications, pause and fast-forward
+  (its speed: 1.5x, 2x, 3x, 4x, 8x or Max, as fast as the PC goes; and
+  whether L2 and R2 control it), the frame-rate counter.
 
-| Key | |
-|---|---|
-| F2 | Pause |
-| F3 | Frame-rate counter |
-| F4 | Fast-forward |
-| F6 | Free camera |
-| F11 or Alt+Enter | Fullscreen |
-| F12 | Screenshot |
+| Key | Controller | |
+|---|---|---|
+| F2 | | Pause |
+| F3 | | Frame-rate counter |
+| F4 | L2 | Fast-forward on or off |
+| ` (left of 1), held | R2, held | Fast-forward while held |
+| F6 | | Free camera |
+| F11 or Alt+Enter | | Fullscreen |
+| F12 | | Screenshot |
+
+## Fast-forward
+
+The whole game runs faster: F4 or L2 switches it on and off, R2 or ` held
+runs it only while held. The speed is set under Interface > Pause and speed,
+and the game's own Game menu too. Music and sounds keep their normal tempo
+(the sound driver runs in step with the audio device), and movies play at
+normal speed even with fast-forward on, so their sound stays with the
+picture; it picks up again after the movie. It adds to the quick scenes
+(Fast transporters, Fast Revelation Flow): 2x fast-forward in a quick scene
+is 4x. How fast Max goes depends on the PC.
+
+While "L2 and R2 control fast-forward" is on (it is by default), the game
+no longer gets L2 and R2, and neither do the keys bound to them (Left and
+Right Shift). Turn it off for anything in the game that needs them. The
+free camera keeps them either way.
 
 ## Game options
 
@@ -87,4 +105,5 @@ the main menu): L1 and R1 turn the page.
 - On a 144 Hz monitor 60 fps judders a little; 120 Hz or variable refresh
   looks smoother.
 - Each option also has an environment variable, for testing:
-  [DEVELOPMENT.md](DEVELOPMENT.md).
+  [DEVELOPMENT.md](DEVELOPMENT.md). For fast-forward: `RG_FAST_FORWARD_SPEED`
+  and `RG_FAST_FORWARD_TRIGGERS`.

@@ -82,8 +82,9 @@ PS2Runtime::RecompiledFunction g_movieStartOriginal = nullptr;
 PS2Runtime::RecompiledFunction g_movieShutdownOriginal = nullptr;
 PS2Runtime::RecompiledFunction g_movieModalOriginal = nullptr;
 PS2Runtime::RecompiledFunction g_intervalOriginal = nullptr;
-bool g_moviePlaying = false;
-bool g_inMovieModal = false;
+// Atomic for moviePlaying(), which the main thread reads.
+std::atomic<bool> g_moviePlaying{false};
+std::atomic<bool> g_inMovieModal{false};
 bool g_sixty = false;     // RG_FPS=60
 // The menu's switch, for install() (written by the menu's thread).
 std::atomic<bool> g_sixtyPreferred{true};
@@ -627,6 +628,11 @@ void install(PS2Runtime &runtime)
                     stepFix(StepFix::Ai) ? " ai" : "", stepFix(StepFix::Texture) ? " texture" : "",
                     stepFix(StepFix::Camera) ? " camera" : "");
     }
+}
+
+bool moviePlaying()
+{
+    return g_moviePlaying.load(std::memory_order_relaxed) || g_inMovieModal.load(std::memory_order_relaxed);
 }
 
 } // namespace rg::timing

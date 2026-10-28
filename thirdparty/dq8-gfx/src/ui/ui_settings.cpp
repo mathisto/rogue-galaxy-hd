@@ -142,6 +142,7 @@ void apply(Settings &s, const std::string &section, const std::string &key, cons
         else if (key == "hide_idle_cursor") parseBool(value, s.hideIdleCursor);
     } else if (section == "game") {
         if (key == "fast_forward_speed") parseNumber(value, s.fastForwardSpeed, 0.0f, 16.0f);
+        else if (key == "trigger_fast_forward") parseBool(value, s.triggerFastForward);
         else {
             // Any other key is one of the game's switches or numbers (Rogue
             // Galaxy: added).
@@ -199,7 +200,8 @@ std::string serializeSettings(const Settings &s) {
         << "\npause_in_menu = " << flag(s.pauseInMenu)
         << "\npause_in_background = " << flag(s.pauseInBackground)
         << "\nhide_idle_cursor = " << flag(s.hideIdleCursor) << '\n'
-        << "\n[game]\nfast_forward_speed = " << s.fastForwardSpeed << '\n';
+        << "\n[game]\nfast_forward_speed = " << s.fastForwardSpeed
+        << "\ntrigger_fast_forward = " << flag(s.triggerFastForward) << '\n';
     for (const auto &[key, on] : s.gameOptions)
         out << key << " = " << flag(on) << '\n';
     for (const auto &[key, value] : s.gameNumbers)

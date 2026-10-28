@@ -76,6 +76,7 @@ add_executable(roguegalaxy
     ee_fpu.cpp
     flip_pacing.cpp
     free_camera.cpp
+    hotkeys.cpp
     movie_audio.cpp
     quick_scenes.cpp
     return_hook.cpp

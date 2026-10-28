@@ -138,9 +138,20 @@ void Overlay::runStep(const ScriptStep &step, uint64_t frame) {
     } else if (command == "fastforward") {
         setFastForward(on);
     } else if (command == "speed") {
-        m_settings.fastForwardSpeed = static_cast<float>(std::atof(first.c_str()));
-        if (m_fastForward && m_host.setSpeed)
-            m_host.setSpeed(m_settings.fastForwardSpeed);
+        setFastForwardSpeed(static_cast<float>(std::atof(first.c_str())));
+    } else if (command == "fastforwardheld") {
+        setFastForwardHeld(on);
+    } else if (command == "keydown" || command == "keyup") {
+        // A key held down until its keyup, where "key" presses and lets go
+        // at once (Rogue Galaxy: added).
+        const SDL_Scancode scancode = SDL_GetScancodeFromName(joined(step.arguments).c_str());
+        SDL_Event event{};
+        event.type = command == "keydown" ? SDL_EVENT_KEY_DOWN : SDL_EVENT_KEY_UP;
+        event.key.windowID = m_window ? SDL_GetWindowID(m_window) : 0;
+        event.key.scancode = scancode;
+        event.key.key = SDL_GetKeyFromScancode(scancode, SDL_KMOD_NONE, false);
+        event.key.down = command == "keydown";
+        SDL_PushEvent(&event);
     } else if (command == "fullscreen") {
         setFullscreen(on);
     } else if (command == "key") {

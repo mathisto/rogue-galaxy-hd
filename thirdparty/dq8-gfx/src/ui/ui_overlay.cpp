@@ -30,9 +30,11 @@ constexpr const char *kIssuesUrl = "https://github.com/victor-takai/rogue-galaxy
 // Function keys the menu owns, and F6, the game's free camera (Rogue Galaxy:
 // added); binding one would fight the shortcut.
 bool reservedKey(SDL_Scancode scancode) {
+    // The grave accent (`, left of 1) holds fast-forward (Rogue Galaxy:
+    // added).
     return scancode == SDL_SCANCODE_F1 || scancode == SDL_SCANCODE_F2 || scancode == SDL_SCANCODE_F3 ||
            scancode == SDL_SCANCODE_F4 || scancode == SDL_SCANCODE_F6 || scancode == SDL_SCANCODE_F11 ||
-           scancode == SDL_SCANCODE_F12;
+           scancode == SDL_SCANCODE_F12 || scancode == SDL_SCANCODE_GRAVE;
 }
 
 std::string timestamp() {
@@ -106,6 +108,8 @@ void Overlay::applySettings() {
         SDL_SetWindowFullscreen(m_window, true);
     applyVolume();
     applyPause();
+    if (m_host.setTriggerFastForward)
+        m_host.setTriggerFastForward(m_settings.triggerFastForward);
     for (const GameOption &option : m_host.gameOptions) {
         if (option.number()) {
             if (m_host.setGameNumber)
@@ -271,13 +275,43 @@ std::string Overlay::speedLabel(float speed) const {
     return text;
 }
 
+float Overlay::fastForwardRate() const {
+    return m_speedOverride >= 0.0f ? m_speedOverride : m_settings.fastForwardSpeed;
+}
+
+void Overlay::applySpeed() {
+    if (canChangeSpeed())
+        m_host.setSpeed(fastForwarding() ? fastForwardRate() : 1.0);
+}
+
+void Overlay::setFastForwardSpeed(float speed) {
+    m_settings.fastForwardSpeed = speed;
+    // Picked in the menu: the run's override gives way to it.
+    m_speedOverride = -1.0f;
+    markDirty();
+    applySpeed();
+}
+
+void Overlay::setFastForwardSpeedOverride(float speed) {
+    m_speedOverride = speed;
+    applySpeed();
+}
+
 void Overlay::setFastForward(bool on) {
     if (!canChangeSpeed() || m_fastForward == on)
         return;
     m_fastForward = on;
-    m_host.setSpeed(on ? m_settings.fastForwardSpeed : 1.0);
-    notify(on ? "Fast-forward: " + speedLabel(m_settings.fastForwardSpeed) : std::string("Normal speed"),
+    applySpeed();
+    notify(on ? "Fast-forward: " + speedLabel(fastForwardRate()) : std::string("Normal speed"),
            on ? Icon::Speed : Icon::Play, 1.5);
+}
+
+void Overlay::setFastForwardHeld(bool held) {
+    if (!canChangeSpeed() || m_fastForwardHeld == held)
+        return;
+    m_fastForwardHeld = held;
+    // The badge says so; a toast at every press would be too many.
+    applySpeed();
 }
 
 bool Overlay::handleEvent(const SDL_Event &event) {
@@ -305,6 +339,9 @@ bool Overlay::handleEvent(const SDL_Event &event) {
     case SDL_EVENT_WINDOW_FOCUS_GAINED:
     case SDL_EVENT_WINDOW_FOCUS_LOST:
         m_windowFocused = event.type == SDL_EVENT_WINDOW_FOCUS_GAINED;
+        // A key let go in another window never comes back up here.
+        if (!m_windowFocused)
+            setFastForwardHeld(false);
         applyVolume();
         applyPause();
         break;
@@ -332,6 +369,13 @@ bool Overlay::handleEvent(const SDL_Event &event) {
             return true;
         if (event.key.scancode == SDL_SCANCODE_ESCAPE && m_menuOpen && backOut())
             return true;
+        break;
+    case SDL_EVENT_KEY_UP:
+        // The grave accent's hold ends (Rogue Galaxy: added).
+        if (event.key.scancode == SDL_SCANCODE_GRAVE && canChangeSpeed()) {
+            setFastForwardHeld(false);
+            return true;
+        }
         break;
     case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
         if (gamepadShortcut(event.gbutton))
@@ -362,6 +406,12 @@ bool Overlay::hotkey(const SDL_KeyboardEvent &key) {
         if (!canChangeSpeed())
             return false;
         setFastForward(!m_fastForward);
+        return true;
+    case SDL_SCANCODE_GRAVE:
+        // Held, fast-forward (Rogue Galaxy: added); its key up ends it.
+        if (!canChangeSpeed())
+            return false;
+        setFastForwardHeld(true);
         return true;
     case SDL_SCANCODE_F3:
         m_settings.showFps = !m_settings.showFps;
@@ -612,13 +662,9 @@ void Overlay::drawMenuBar() {
                 if (menuItem("Fast-forward", "F4", m_fastForward))
                     setFastForward(!m_fastForward);
                 if (beginSubmenu("Fast-forward speed")) {
-                    for (const float speed : {2.0f, 3.0f, 4.0f, 0.0f}) {
-                        if (menuItem(speedLabel(speed).c_str(), nullptr, m_settings.fastForwardSpeed == speed)) {
-                            m_settings.fastForwardSpeed = speed;
-                            markDirty();
-                            if (m_fastForward)
-                                m_host.setSpeed(speed);
-                        }
+                    for (const float speed : {1.5f, 2.0f, 3.0f, 4.0f, 8.0f, 0.0f}) {
+                        if (menuItem(speedLabel(speed).c_str(), nullptr, fastForwardRate() == speed))
+                            setFastForwardSpeed(speed);
                     }
                     ImGui::EndMenu();
                 }
@@ -692,8 +738,8 @@ void Overlay::drawStatus() {
     if (!pausing())
         std::snprintf(fps, sizeof(fps), "%.0f FPS", m_fps);
     std::string state = pausing() ? "Paused" : "";
-    if (m_fastForward)
-        state += (state.empty() ? "" : "  ") + std::string("Fast ") + speedLabel(m_settings.fastForwardSpeed);
+    if (fastForwarding())
+        state += (state.empty() ? "" : "  ") + std::string("Fast ") + speedLabel(fastForwardRate());
 
     const ImGuiStyle &style = ImGui::GetStyle();
     const float iconSize = em(1.05f);
@@ -858,7 +904,7 @@ void Overlay::drawFps() {
 }
 
 void Overlay::drawSpeedBadge() {
-    if (!m_fastForward)
+    if (!fastForwarding())
         return;
     ImVec2 min, max;
     pictureBounds(min, max);
@@ -872,7 +918,7 @@ void Overlay::drawSpeedBadge() {
         ImGui::BringWindowToDisplayFront(ImGui::GetCurrentWindow());
         icon(Icon::Speed, em(1.0f), palette::kGold);
         ImGui::SameLine(0.0f, em(0.45f));
-        ImGui::TextUnformatted(speedLabel(m_settings.fastForwardSpeed).c_str());
+        ImGui::TextUnformatted(speedLabel(fastForwardRate()).c_str());
     }
     ImGui::End();
     ImGui::PopStyleVar();

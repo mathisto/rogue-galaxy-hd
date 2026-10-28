@@ -356,19 +356,30 @@ void Overlay::drawInterfacePage() {
                 }
             }
             if (canChangeSpeed()) {
-                settingRow("Fast-forward speed", "F4 switches between it and normal speed. Music keeps its tempo.",
+                settingRow("Fast-forward speed",
+                           "F4 switches between it and normal speed; ` (left of 1) held runs at it until let go. "
+                           "Music and sounds keep their tempo.",
                            "Experimental");
-                static constexpr float kSpeeds[] = {2.0f, 3.0f, 4.0f, 0.0f};
-                static constexpr const char *kSpeedNames[] = {"2\xC3\x97", "3\xC3\x97", "4\xC3\x97", "Unlimited"};
-                int speed = 0;
-                for (int index = 0; index < 4; ++index)
-                    if (m_settings.fastForwardSpeed == kSpeeds[index])
+                // 1.5 and 8 (Rogue Galaxy: added); "Max" is unpaced.
+                static constexpr float kSpeeds[] = {1.5f, 2.0f, 3.0f, 4.0f, 8.0f, 0.0f};
+                static constexpr const char *kSpeedNames[] = {"1.5\xC3\x97", "2\xC3\x97", "3\xC3\x97",
+                                                              "4\xC3\x97", "8\xC3\x97", "Max"};
+                constexpr int kSpeedCount = static_cast<int>(sizeof(kSpeeds) / sizeof(kSpeeds[0]));
+                int speed = 1;
+                for (int index = 0; index < kSpeedCount; ++index)
+                    if (fastForwardRate() == kSpeeds[index])
                         speed = index;
-                if (segmented("speed", &speed, kSpeedNames, 4)) {
-                    m_settings.fastForwardSpeed = kSpeeds[speed];
-                    if (m_fastForward)
-                        m_host.setSpeed(m_settings.fastForwardSpeed);
-                    markDirty();
+                if (segmented("speed", &speed, kSpeedNames, kSpeedCount))
+                    setFastForwardSpeed(kSpeeds[speed]);
+                if (m_host.setTriggerFastForward) {
+                    settingRow("L2 and R2 control fast-forward",
+                               "R2 held fast-forwards, L2 switches it on and off, with the controller or the keys "
+                               "bound to them. The game then no longer gets L2 and R2 (the free camera still "
+                               "does).");
+                    if (toggle("triggerspeed", &m_settings.triggerFastForward)) {
+                        m_host.setTriggerFastForward(m_settings.triggerFastForward);
+                        markDirty();
+                    }
                 }
             }
             endSettings();
@@ -744,12 +755,15 @@ void Overlay::drawShortcuts() {
             static constexpr const char *kF1[] = {"F1"}, *kF2[] = {"F2"}, *kF3[] = {"F3"}, *kF4[] = {"F4"},
                                         *kF11[] = {"F11"}, *kAltEnter[] = {"Alt", "Enter"}, *kF12[] = {"F12"},
                                         *kShiftF12[] = {"Shift", "F12"}, *kEsc[] = {"Esc"};
+            static constexpr const char *kGrave[] = {"`"};
             shortcutRow(kF1, 1, "Open or close this menu");
             if (canPause())
                 shortcutRow(kF2, 1, "Pause or resume");
             shortcutRow(kF3, 1, "Show the frame rate");
             if (canChangeSpeed())
                 shortcutRow(kF4, 1, "Fast-forward");
+            if (canChangeSpeed())
+                shortcutRow(kGrave, 1, "Fast-forward while held");
             shortcutRow(kF11, 1, "Fullscreen");
             shortcutRow(kAltEnter, 2, "Fullscreen");
             shortcutRow(kF12, 1, "Screenshot of the game");
@@ -767,6 +781,11 @@ void Overlay::drawShortcuts() {
             if (m_settings.backStartOpensMenu)
                 shortcutRow(kBackStart, 2, "Open or close the menu");
             shortcutRow(kShoulders, 2, "Previous and next settings page", "/");
+            static constexpr const char *kR2[] = {"R2"}, *kL2[] = {"L2"};
+            if (canChangeSpeed() && m_host.setTriggerFastForward && m_settings.triggerFastForward) {
+                shortcutRow(kR2, 1, "Fast-forward while held");
+                shortcutRow(kL2, 1, "Fast-forward on or off");
+            }
             shortcutRow(kBack, 1, "Back, in the menu");
             ImGui::EndTable();
         }
