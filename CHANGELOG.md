@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- HD texture packs: the pack builder now picks the upscale model per class by
+  default: animevideov3 for effects (glows and sparks were greener, bigger and
+  starrier), foliage and clouds, and the general x4plus model for Salgin's
+  paving, cobbles and brick (no more invented "cracked mosaic" lines). The old
+  look stays as `RG_TEXTURE_PACK=textures/SCUS-97490/x4plus-anime/replacements`.
+- Xbox prompts: the controls boards' controller drawing is an Xbox-style pad;
+  START/SELECT pictograms are Menu/View, the sticks LS/RS, the d-pad Xbox's;
+  "START button", "Press the START button" and "L3/R3 button" read Menu, LS, RS.
+- Modern font: battle damage numbers, the HUD's HP/AP digits and the results
+  screen's digits are redrawn in it too.
+
 - HD texture packs: every item icon is HD. The icon sheet the menus draw
   from (items, equipment, allies, shops, the developers' item grid) had
   stayed native: the game animates one of its icons in place and draws the

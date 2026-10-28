@@ -16,8 +16,8 @@ disc image; nothing of the game is distributed.
   FSR or a supersampled downscale
   ([GRAPHICS-UPSCALING.md](docs/GRAPHICS-UPSCALING.md); ReShade can be let in)
 - An in-game menu (F1) for graphics, sound and controls
-- Xbox button prompts (in the help pictures too), a sharp modern font (menu
-  numbers included), and texture packs
+- Xbox button prompts (in the help pictures and controller drawings too), a
+  sharp modern font (menu and battle numbers included), and texture packs
   ([FONT-AND-PROMPTS.md](docs/FONT-AND-PROMPTS.md)), including 4x HD
   textures built from your disc ([TEXTURE-PACKS.md](docs/TEXTURE-PACKS.md))
 - Game options: camera, field of view, draw distance, instant text,

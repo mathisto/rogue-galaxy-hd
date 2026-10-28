@@ -93,10 +93,10 @@ free camera keeps them either way.
 
 | Option | |
 |---|---|
-| Button prompts | PlayStation, Xbox (A, B, X, Y, LB, RB, LT, RT, by position: Cross is A), or Auto (the default: PlayStation buttons for a PlayStation controller, Xbox ones otherwise; a toast says which and why). Buttons painted into pictures (help pages, the loading screen, battle and menu sheets) follow too. |
-| Font | Original, or Modern: Roboto, or your own .ttf in the `fonts` folder, drawn sharp at the internal resolution; lines rewrap to its letter widths. The menus' numbers (play time, money, counts, levels, stats) and the compass letters too. |
+| Button prompts | PlayStation, Xbox (A, B, X, Y, LB, RB, LT, RT, by position: Cross is A), or Auto (the default: PlayStation buttons for a PlayStation controller, Xbox ones otherwise; a toast says which and why). Buttons painted into pictures (help pages, the loading screen, battle and menu sheets) follow too, with the controls boards' controller drawing as an Xbox-style pad, START/SELECT as Menu/View, the sticks and d-pad, and "START button" / "L3" words. |
+| Font | Original, or Modern: Roboto, or your own .ttf in the `fonts` folder, drawn sharp at the internal resolution; lines rewrap to its letter widths. The menus' numbers (play time, money, counts, levels, stats), the battle's damage numbers, HP/AP and results digits, and the compass letters too. |
 | Texture replacements | On by default. Off shows every texture as the game has it: no Xbox buttons, no modern font, no texture pack. F8 reads the pack's folder again. |
-| Texture pack memory | 512 MB to 8 GB (default 2 GB): the video memory an HD texture pack may take; the least recently seen pictures give way ([TEXTURE-PACKS.md](TEXTURE-PACKS.md)). |
+| Texture pack memory | 512 MB to 8 GB (default 2 GB): the video memory an HD texture pack may take; the least recently seen pictures give way ([TEXTURE-PACKS.md](TEXTURE-PACKS.md)). The pack's look (per-class upscale models) is chosen when it is built; `RG_TEXTURE_PACK=textures/SCUS-97490/x4plus-anime/replacements` runs the older all-x4plus-anime look. |
 
 **Developers**
 
