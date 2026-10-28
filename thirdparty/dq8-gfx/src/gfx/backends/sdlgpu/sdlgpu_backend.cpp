@@ -850,6 +850,10 @@ struct SdlGpuBackend::Impl {
         SDL_GPUTextureFormat format = SDL_GPU_TEXTUREFORMAT_INVALID;
     };
     ScratchTexture sharpTexture, compositeTexture, captureTexture;
+    // The picture at its size on screen, for FSR's passes (Rogue Galaxy:
+    // added), and whether a pass failed once (then the picture is blitted).
+    ScratchTexture fsrTexture;
+    bool fsrFailed = false;
     // What fills the window beside the picture (Rogue Galaxy: added): the
     // picture halved down to a small copy for the blurred sides, and the
     // player's image, loaded each time that choice is made.
@@ -3201,6 +3205,62 @@ struct SdlGpuBackend::Impl {
     // CLEAR paints the bars black; LOAD keeps the sides drawn under it.
     void drawPicture(SDL_GPUCommandBuffer *commands, const PresentationSlot &slot,
                      SDL_GPUTexture *target, SdlGpuRect rect, SDL_GPULoadOp loadOp) {
+        const SdlGpuRect from = pictureRegion(slot);
+        const bool enlarged = rect.width >= from.width && rect.height >= from.height &&
+                              (rect.width > from.width || rect.height > from.height);
+        const bool easu = displayOptions.filter == SdlGpuFilter::Fsr && enlarged;
+        if ((easu || displayOptions.sharpening != 0u) && !fsrFailed &&
+            drawWithFsr(commands, slot, target, rect, loadOp, easu))
+            return;
+        blitPicture(commands, slot, target, rect, loadOp);
+    }
+
+    // FSR 1 (Rogue Galaxy: added): the picture enlarged by EASU, or scaled
+    // the usual way, into a texture of its size on screen; then sharpened by
+    // RCAS into the target, or copied there. False, with nothing drawn into
+    // the target, when a pass could not be made (a device without SPIR-V);
+    // the picture is then blitted from that frame on.
+    bool drawWithFsr(SDL_GPUCommandBuffer *commands, const PresentationSlot &slot, SDL_GPUTexture *target,
+                     SdlGpuRect rect, SDL_GPULoadOp loadOp, bool easu) {
+        if (rect.width == 0u || rect.height == 0u ||
+            !ensureScratch(fsrTexture, rect.width, rect.height, SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM))
+            return false;
+        const SdlGpuRect at{0u, 0u, rect.width, rect.height};
+        std::string error;
+        if (easu) {
+            const SdlGpuRect from = pictureRegion(slot);
+            const uint32_t region[4] = {from.x, from.y, from.width, from.height};
+            if (!device.drawEasu(commands, fsrTexture.texture, rect.width, rect.height, slot.texture, region,
+                                 error)) {
+                std::fprintf(stderr, "[gfx] FSR is off: %s\n", error.c_str());
+                fsrFailed = true;
+                return false;
+            }
+        } else {
+            blitPicture(commands, slot, fsrTexture.texture, at, SDL_GPU_LOADOP_DONT_CARE);
+        }
+        if (displayOptions.sharpening == 0u) {
+            blitRegion(commands, fsrTexture.texture, at, target, rect, SDL_GPU_FILTER_NEAREST, loadOp);
+            return true;
+        }
+        // Low, medium and high: 1, 0.5 and 0 stops below the most.
+        static constexpr float kStrength[] = {0.0f, 0.5f, 0.70710678f, 1.0f};
+        const uint32_t placed[4] = {rect.x, rect.y, rect.width, rect.height};
+        if (!device.drawRcas(commands, target, SDL_GetGPUSwapchainTextureFormat(device.handle(), window), placed,
+                             fsrTexture.texture, kStrength[std::min<uint32_t>(displayOptions.sharpening, 3u)],
+                             loadOp == SDL_GPU_LOADOP_CLEAR, error)) {
+            std::fprintf(stderr, "[gfx] FSR sharpening is off: %s\n", error.c_str());
+            fsrFailed = true;
+            // The enlarged picture is there already: shown without sharpening.
+            blitRegion(commands, fsrTexture.texture, at, target, rect, SDL_GPU_FILTER_NEAREST, loadOp);
+        }
+        return true;
+    }
+
+    // The picture scaled by a blit, the filter's way (FSR's falls back to
+    // bilinear).
+    void blitPicture(SDL_GPUCommandBuffer *commands, const PresentationSlot &slot, SDL_GPUTexture *target,
+                     SdlGpuRect rect, SDL_GPULoadOp loadOp) {
         SDL_GPUTexture *source = slot.texture;
         SdlGpuRect from = pictureRegion(slot);
         uint32_t width = from.width;
@@ -4081,7 +4141,7 @@ SdlGpuBackend::~SdlGpuBackend() {
             SDL_ReleaseGPUTransferBuffer(m_impl->device.handle(), m_impl->feedbackUpload);
         if (m_impl->presentUpload)
             SDL_ReleaseGPUTexture(m_impl->device.handle(), m_impl->presentUpload);
-        for (auto *scratch : {&m_impl->sharpTexture, &m_impl->compositeTexture, &m_impl->captureTexture,
+        for (auto *scratch : {&m_impl->sharpTexture, &m_impl->fsrTexture, &m_impl->compositeTexture, &m_impl->captureTexture,
                               &m_impl->roundTrip.copy})
             m_impl->releaseScratch(*scratch);
         for (auto &level : m_impl->blurLevels)

@@ -26,7 +26,8 @@ constexpr Named<SdlGpuAspect> kAspects[] = {
     {SdlGpuAspect::Auto, "auto"}, {SdlGpuAspect::Standard, "4:3"}, {SdlGpuAspect::Wide, "16:9"},
     {SdlGpuAspect::Native, "native"}, {SdlGpuAspect::Stretch, "stretch"}};
 constexpr Named<SdlGpuFilter> kFilters[] = {
-    {SdlGpuFilter::Sharp, "sharp"}, {SdlGpuFilter::Smooth, "smooth"}, {SdlGpuFilter::Nearest, "nearest"}};
+    {SdlGpuFilter::Sharp, "sharp"}, {SdlGpuFilter::Smooth, "smooth"}, {SdlGpuFilter::Nearest, "nearest"},
+    {SdlGpuFilter::Fsr, "fsr"}};
 constexpr Named<gfx::SdlGpuSides> kSides[] = {
     {gfx::SdlGpuSides::Black, "black"}, {gfx::SdlGpuSides::Blurred, "blurred"}, {gfx::SdlGpuSides::Image, "image"}};
 constexpr Named<SDL_GPUPresentMode> kPresentModes[] = {
@@ -107,6 +108,11 @@ void apply(Settings &s, const std::string &section, const std::string &key, cons
         else if (key == "sides") parseNamed(kSides, value, s.display.sides);
         else if (key == "integer_scale") parseBool(value, s.display.integerScale);
         else if (key == "remove_line_blend") parseBool(value, s.display.removeLineBlend);
+        else if (key == "sharpening") {
+            int level = s.display.sharpening;
+            parseNumber(value, level, 0, 3);
+            s.display.sharpening = static_cast<uint8_t>(level);
+        }
         else if (key == "present") parseNamed(kPresentModes, value, s.display.presentMode);
     } else if (section == "sound") {
         if (key == "volume") parseNumber(value, s.volume, 0, 100);
@@ -174,6 +180,7 @@ std::string serializeSettings(const Settings &s) {
         << "\nsides = " << nameOf(kSides, s.display.sides)
         << "\ninteger_scale = " << flag(s.display.integerScale)
         << "\nremove_line_blend = " << flag(s.display.removeLineBlend)
+        << "\nsharpening = " << int(s.display.sharpening)
         << "\npresent = " << nameOf(kPresentModes, s.display.presentMode) << "\n\n"
         << "[sound]\nvolume = " << s.volume << "\nmuted = " << flag(s.muted)
         << "\nmute_in_background = " << flag(s.muteInBackground) << "\n\n"

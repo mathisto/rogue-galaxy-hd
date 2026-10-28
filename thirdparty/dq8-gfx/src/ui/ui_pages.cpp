@@ -249,14 +249,30 @@ void Overlay::drawDisplayPage() {
             markDirty();
         }
 
-        static constexpr const char *kFilterHelp[] = {"Crisp pixels with no uneven columns, at any size.",
-                                                      "Soft, smooth scaling.",
-                                                      "Raw pixels; uneven unless the size is a whole multiple."};
+        static constexpr const char *kFilterHelp[] = {
+            "Crisp pixels with no uneven columns, at any size.", "Soft, smooth scaling.",
+            "Raw pixels; uneven unless the size is a whole multiple.",
+            // Rogue Galaxy: added.
+            "AMD FSR 1's edge-aware upscaling: smooth edges without blur when the window is larger than the "
+            "internal resolution; smooth scaling when it is not. Raise the internal resolution first: it adds "
+            "real detail, which no upscaler can."};
         settingRow("Scaling filter", kFilterHelp[static_cast<int>(m_settings.display.filter)]);
-        static constexpr const char *kFilters[] = {"Sharp", "Smooth", "Nearest"};
+        static constexpr const char *kFilters[] = {"Sharp", "Smooth", "Nearest", "FSR"};
         int filter = static_cast<int>(m_settings.display.filter);
-        if (segmented("filter", &filter, kFilters, 3)) {
+        if (segmented("filter", &filter, kFilters, 4)) {
             m_settings.display.filter = static_cast<gfx::SdlGpuFilter>(filter);
+            m_backend.setDisplayOptions(m_settings.display);
+            markDirty();
+        }
+
+        // Rogue Galaxy: added (`sharpening` in the file).
+        settingRow("Sharpening",
+                   "AMD FSR 1's contrast-adaptive sharpening over the picture, with any filter: crisper edges and "
+                   "textures without halos. Off by default.");
+        static constexpr const char *kSharpening[] = {"Off", "Low", "Medium", "High"};
+        int sharpening = std::min<int>(m_settings.display.sharpening, 3);
+        if (segmented("sharpening", &sharpening, kSharpening, 4)) {
+            m_settings.display.sharpening = static_cast<uint8_t>(sharpening);
             m_backend.setDisplayOptions(m_settings.display);
             markDirty();
         }

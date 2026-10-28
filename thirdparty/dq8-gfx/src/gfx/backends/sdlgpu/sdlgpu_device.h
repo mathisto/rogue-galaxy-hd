@@ -184,6 +184,20 @@ public:
                    uint32_t width, uint32_t height, SDL_GPUTexture *source, uint32_t sourceWidth,
                    uint32_t sourceHeight, bool blur, float brightness, std::string &error);
 
+    // FSR 1's two passes over the picture shown (present_easu.frag,
+    // present_rcas.frag; Rogue Galaxy: added). drawEasu enlarges the region
+    // (x, y, width, height) of `source` to fill `target`, an RGBA8 texture of
+    // width by height. drawRcas sharpens `source`, the picture at the size
+    // of `rect` (x, y, width, height) at its origin, into that rect of
+    // `target` (of `format`), clearing the rest to black first when `clear`
+    // (else keeping it). Strength 0 to 1. SPIR-V only: false elsewhere, and
+    // the caller draws the picture the usual way.
+    bool drawEasu(SDL_GPUCommandBuffer *commands, SDL_GPUTexture *target, uint32_t width, uint32_t height,
+                  SDL_GPUTexture *source, const uint32_t (&region)[4], std::string &error);
+    bool drawRcas(SDL_GPUCommandBuffer *commands, SDL_GPUTexture *target, SDL_GPUTextureFormat format,
+                  const uint32_t (&rect)[4], SDL_GPUTexture *source, float strength, bool clear,
+                  std::string &error);
+
     // Work recorded ahead of the next submission (Rogue Galaxy: added). A
     // texture upload, a target's patches, a page import, an 8-bit expansion,
     // a reinterpretation or a clear was each a command buffer submission of
@@ -247,6 +261,10 @@ private:
     SDL_GPUGraphicsPipeline *m_sidesPipeline = nullptr;
     SDL_GPUTextureFormat m_sidesFormat = SDL_GPU_TEXTUREFORMAT_INVALID;
     SDL_GPUSampler *m_linearSampler = nullptr;
+    // drawEasu's (always into RGBA8) and drawRcas' for the window's format.
+    SDL_GPUGraphicsPipeline *m_easuPipeline = nullptr;
+    SDL_GPUGraphicsPipeline *m_rcasPipeline = nullptr;
+    SDL_GPUTextureFormat m_rcasFormat = SDL_GPU_TEXTUREFORMAT_INVALID;
     SDL_GPUGraphicsPipeline *m_index8Pipeline = nullptr;
     SDL_GPUTexture *m_index8Palette = nullptr;
     SDL_GPUTexture *m_index8Placement = nullptr;

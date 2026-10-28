@@ -3,6 +3,8 @@
 
 #include "gs_display.frag.spv.h"
 #include "gs_reinterpret.vert.spv.h"
+#include "present_easu.frag.spv.h"
+#include "present_rcas.frag.spv.h"
 #include "present_sides.frag.spv.h"
 #ifdef DQ8_GFX_HAS_MSL
 #include "gs_display.frag.msl.h"
@@ -258,6 +260,123 @@ bool SdlGpuDevice::drawSides(SDL_GPUCommandBuffer *commands, SDL_GPUTexture *tar
     SDL_DrawGPUPrimitives(pass, 3u, 1u, 0u, 0u);
     SDL_EndGPURenderPass(pass);
     return true;
+}
+
+namespace {
+
+// A full-screen pass's pipeline: gs_reinterpret.vert's covering triangle,
+// a fragment shader with one sampler and one uniform buffer, no blending.
+template <size_t N>
+SDL_GPUGraphicsPipeline *createPresentPass(SDL_GPUDevice *device, const uint32_t (&fragmentCode)[N],
+                                           SDL_GPUTextureFormat format, const char *name, std::string &error) {
+    SDL_GPUShaderCreateInfo vertexInfo{};
+    vertexInfo.code = reinterpret_cast<const uint8_t *>(kGsReinterpretVertSpirv);
+    vertexInfo.code_size = sizeof(kGsReinterpretVertSpirv);
+    vertexInfo.entrypoint = "main";
+    vertexInfo.format = SDL_GPU_SHADERFORMAT_SPIRV;
+    vertexInfo.stage = SDL_GPU_SHADERSTAGE_VERTEX;
+    SDL_GPUShaderCreateInfo fragmentInfo{};
+    fragmentInfo.code = reinterpret_cast<const uint8_t *>(fragmentCode);
+    fragmentInfo.code_size = sizeof(fragmentCode);
+    fragmentInfo.entrypoint = "main";
+    fragmentInfo.format = SDL_GPU_SHADERFORMAT_SPIRV;
+    fragmentInfo.stage = SDL_GPU_SHADERSTAGE_FRAGMENT;
+    fragmentInfo.num_samplers = 1u;
+    fragmentInfo.num_uniform_buffers = 1u;
+    SDL_GPUShader *vertex = SDL_CreateGPUShader(device, &vertexInfo);
+    SDL_GPUShader *fragment = vertex ? SDL_CreateGPUShader(device, &fragmentInfo) : nullptr;
+    SDL_GPUGraphicsPipeline *pipeline = nullptr;
+    if (fragment) {
+        SDL_GPUColorTargetDescription colorTarget{};
+        colorTarget.format = format;
+        SDL_GPUGraphicsPipelineCreateInfo info{};
+        info.vertex_shader = vertex;
+        info.fragment_shader = fragment;
+        info.primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
+        info.rasterizer_state.fill_mode = SDL_GPU_FILLMODE_FILL;
+        info.rasterizer_state.cull_mode = SDL_GPU_CULLMODE_NONE;
+        info.multisample_state.sample_count = SDL_GPU_SAMPLECOUNT_1;
+        info.target_info.color_target_descriptions = &colorTarget;
+        info.target_info.num_color_targets = 1u;
+        pipeline = SDL_CreateGPUGraphicsPipeline(device, &info);
+    }
+    if (!pipeline)
+        error = std::string(fragment ? "SDL_CreateGPUGraphicsPipeline(" : "SDL_CreateGPUShader(") + name +
+                "): " + SDL_GetError();
+    if (fragment)
+        SDL_ReleaseGPUShader(device, fragment);
+    if (vertex)
+        SDL_ReleaseGPUShader(device, vertex);
+    return pipeline;
+}
+
+// One full-screen pass of `pipeline` into rect of target, reading source.
+bool runPresentPass(SDL_GPUCommandBuffer *commands, SDL_GPUGraphicsPipeline *pipeline, SDL_GPUTexture *target,
+                    const uint32_t (&rect)[4], bool clear, SDL_GPUTexture *source, SDL_GPUSampler *sampler,
+                    const float (&uniforms)[8], const char *name, std::string &error) {
+    SDL_GPUColorTargetInfo targetInfo{};
+    targetInfo.texture = target;
+    targetInfo.load_op = clear ? SDL_GPU_LOADOP_CLEAR : SDL_GPU_LOADOP_LOAD;
+    targetInfo.clear_color = SDL_FColor{0.0f, 0.0f, 0.0f, 1.0f};
+    targetInfo.store_op = SDL_GPU_STOREOP_STORE;
+    SDL_GPURenderPass *pass = SDL_BeginGPURenderPass(commands, &targetInfo, 1u, nullptr);
+    if (!pass) {
+        error = std::string("SDL_BeginGPURenderPass(") + name + "): " + SDL_GetError();
+        return false;
+    }
+    SDL_BindGPUGraphicsPipeline(pass, pipeline);
+    const SDL_GPUViewport viewport{float(rect[0]), float(rect[1]), float(rect[2]), float(rect[3]), 0.0f, 1.0f};
+    SDL_SetGPUViewport(pass, &viewport);
+    const SDL_Rect scissor{int(rect[0]), int(rect[1]), int(rect[2]), int(rect[3])};
+    SDL_SetGPUScissor(pass, &scissor);
+    const SDL_GPUTextureSamplerBinding binding{source, sampler};
+    SDL_BindGPUFragmentSamplers(pass, 0u, &binding, 1u);
+    SDL_PushGPUFragmentUniformData(commands, 0u, uniforms, sizeof(uniforms));
+    SDL_DrawGPUPrimitives(pass, 3u, 1u, 0u, 0u);
+    SDL_EndGPURenderPass(pass);
+    return true;
+}
+
+} // namespace
+
+bool SdlGpuDevice::drawEasu(SDL_GPUCommandBuffer *commands, SDL_GPUTexture *target, uint32_t width,
+                            uint32_t height, SDL_GPUTexture *source, const uint32_t (&region)[4],
+                            std::string &error) {
+    if ((SDL_GetGPUShaderFormats(m_device) & SDL_GPU_SHADERFORMAT_SPIRV) == 0) {
+        error = "no SPIR-V shaders on this device";
+        return false;
+    }
+    if (!m_easuPipeline)
+        m_easuPipeline =
+            createPresentPass(m_device, kPresentEasuFragSpirv, SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM, "easu", error);
+    if (!m_easuPipeline)
+        return false;
+    const uint32_t whole[4] = {0u, 0u, width, height};
+    const float uniforms[8] = {float(region[0]), float(region[1]), float(region[2]), float(region[3]),
+                               float(width),     float(height),    0.0f,             0.0f};
+    return runPresentPass(commands, m_easuPipeline, target, whole, false, source, m_sampler, uniforms, "easu", error);
+}
+
+bool SdlGpuDevice::drawRcas(SDL_GPUCommandBuffer *commands, SDL_GPUTexture *target, SDL_GPUTextureFormat format,
+                            const uint32_t (&rect)[4], SDL_GPUTexture *source, float strength, bool clear,
+                            std::string &error) {
+    if ((SDL_GetGPUShaderFormats(m_device) & SDL_GPU_SHADERFORMAT_SPIRV) == 0) {
+        error = "no SPIR-V shaders on this device";
+        return false;
+    }
+    if (m_rcasPipeline && m_rcasFormat != format) {
+        SDL_ReleaseGPUGraphicsPipeline(m_device, m_rcasPipeline);
+        m_rcasPipeline = nullptr;
+    }
+    if (!m_rcasPipeline) {
+        m_rcasPipeline = createPresentPass(m_device, kPresentRcasFragSpirv, format, "rcas", error);
+        if (!m_rcasPipeline)
+            return false;
+        m_rcasFormat = format;
+    }
+    const float uniforms[8] = {float(rect[0]), float(rect[1]), float(rect[2]), float(rect[3]),
+                               strength,       0.0f,           0.0f,           0.0f};
+    return runPresentPass(commands, m_rcasPipeline, target, rect, clear, source, m_sampler, uniforms, "rcas", error);
 }
 
 } // namespace dq8::gfx

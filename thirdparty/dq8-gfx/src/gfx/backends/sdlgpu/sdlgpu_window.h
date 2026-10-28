@@ -22,6 +22,9 @@ enum class SdlGpuFilter : uint8_t {
     Sharp,   // nearest to a whole multiple, then smooth to the final size
     Smooth,  // bilinear
     Nearest, // nearest neighbour
+    // AMD FSR 1's edge-adaptive upscale (EASU) when the picture is shown
+    // larger than drawn; bilinear when not (Rogue Galaxy: added).
+    Fsr,
 };
 
 // What fills the window beside a picture that does not reach its edges
@@ -51,6 +54,9 @@ struct SdlGpuDisplayOptions {
     // undrawn or half drawn, which a television's overscan hid.
     uint32_t crop = 0u;
     SdlGpuSides sides = SdlGpuSides::Black;
+    // FSR 1's contrast-adaptive sharpening (RCAS) over the picture as shown,
+    // after the filter: 0 off, 1 to 3 low to high (Rogue Galaxy: added).
+    uint8_t sharpening = 0u;
     bool operator==(const SdlGpuDisplayOptions &) const = default;
 };
 

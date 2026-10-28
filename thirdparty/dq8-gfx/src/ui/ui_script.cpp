@@ -90,9 +90,9 @@ void Overlay::runStep(const ScriptStep &step, uint64_t frame) {
     static constexpr gfx::SdlGpuAspect kAspectValues[] = {gfx::SdlGpuAspect::Auto, gfx::SdlGpuAspect::Standard,
                                                           gfx::SdlGpuAspect::Wide, gfx::SdlGpuAspect::Native,
                                                           gfx::SdlGpuAspect::Stretch};
-    static constexpr const char *kFilters[] = {"sharp", "smooth", "nearest"};
+    static constexpr const char *kFilters[] = {"sharp", "smooth", "nearest", "fsr"};
     static constexpr gfx::SdlGpuFilter kFilterValues[] = {gfx::SdlGpuFilter::Sharp, gfx::SdlGpuFilter::Smooth,
-                                                          gfx::SdlGpuFilter::Nearest};
+                                                          gfx::SdlGpuFilter::Nearest, gfx::SdlGpuFilter::Fsr};
     static constexpr const char *kSides[] = {"black", "blurred", "image"};
     static constexpr gfx::SdlGpuSides kSidesValues[] = {gfx::SdlGpuSides::Black, gfx::SdlGpuSides::Blurred,
                                                         gfx::SdlGpuSides::Image};
@@ -125,6 +125,10 @@ void Overlay::runStep(const ScriptStep &step, uint64_t frame) {
     } else if (command == "filter" && pick(first, kFilters, kFilterValues, m_settings.display.filter)) {
         m_backend.setDisplayOptions(m_settings.display);
     } else if (command == "sides" && pick(first, kSides, kSidesValues, m_settings.display.sides)) {
+        m_backend.setDisplayOptions(m_settings.display);
+    } else if (command == "sharpening") {
+        // 0 off to 3 high (Rogue Galaxy: added).
+        m_settings.display.sharpening = static_cast<uint8_t>(std::clamp(std::atoi(first.c_str()), 0, 3));
         m_backend.setDisplayOptions(m_settings.display);
     } else if (command == "integer") {
         m_settings.display.integerScale = on;
