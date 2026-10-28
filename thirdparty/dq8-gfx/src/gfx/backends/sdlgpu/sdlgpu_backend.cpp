@@ -788,6 +788,11 @@ struct SdlGpuBackend::Impl {
     SDL_Window *window = nullptr;
     // What openWindow was given; the FPS readout keeps it in front.
     std::string windowTitle;
+    // DQ8_GFX_HIDDEN_WINDOW=2: never shown, so it has no swapchain image to
+    // draw into, but frames are composed off screen at its size, which keeps
+    // the overlay (and its RG_UI_SCRIPT) running and serves captures (Rogue
+    // Galaxy: added). =1 skips that work, for benchmarks.
+    bool composeHidden = false;
     // Staging for the fallback path, where the frame had to be composed on the
     // CPU and has to get back onto the GPU to be shown.
     SDL_GPUTexture *presentUpload = nullptr;
@@ -3429,19 +3434,33 @@ struct SdlGpuBackend::Impl {
         }
         // Also when minimised, so an idle overlay does not retry every pump.
         lastShown = std::chrono::steady_clock::now();
+        bool offScreen = false;
         if (!swapchain || swapchainWidth == 0u || swapchainHeight == 0u) {
-            // Minimised or otherwise unavailable this frame; nothing to show.
-            if (!submitAfterPending([&] { return SDL_SubmitGPUCommandBuffer(commands); }))
-                return fail("SDL_SubmitGPUCommandBuffer(minimized): ");
-            return true;
+            int hiddenWidth = 0, hiddenHeight = 0;
+            offScreen = composeHidden && SDL_GetWindowSizeInPixels(window, &hiddenWidth, &hiddenHeight) &&
+                        hiddenWidth > 0 && hiddenHeight > 0 &&
+                        ensureScratch(compositeTexture, uint32_t(hiddenWidth), uint32_t(hiddenHeight),
+                                      SDL_GetGPUSwapchainTextureFormat(device.handle(), window));
+            if (!offScreen) {
+                // Minimised or otherwise unavailable this frame; nothing to show.
+                if (!submitAfterPending([&] { return SDL_SubmitGPUCommandBuffer(commands); }))
+                    return fail("SDL_SubmitGPUCommandBuffer(minimized): ");
+                return true;
+            }
+            swapchain = nullptr;
+            swapchainWidth = uint32_t(hiddenWidth);
+            swapchainHeight = uint32_t(hiddenHeight);
         }
         const SdlGpuRect whole{0u, 0u, swapchainWidth, swapchainHeight};
 
         // A capture composes off screen first, since a swapchain image cannot
         // be read back.
-        SDL_GPUTexture *target = swapchain;
+        SDL_GPUTexture *target = offScreen ? compositeTexture.texture : swapchain;
         std::optional<CaptureRequest> capture;
-        if (!captureRequests.empty() &&
+        if (offScreen && !captureRequests.empty()) {
+            capture = std::move(captureRequests.front());
+            captureRequests.erase(captureRequests.begin());
+        } else if (!captureRequests.empty() &&
             ensureScratch(compositeTexture, swapchainWidth, swapchainHeight,
                           SDL_GetGPUSwapchainTextureFormat(device.handle(), window))) {
             capture = std::move(captureRequests.front());
@@ -3476,7 +3495,7 @@ struct SdlGpuBackend::Impl {
             overlay->render(commands, target, swapchainWidth, swapchainHeight);
         if (capture && capture->withOverlay)
             copyOut(whole);
-        if (target != swapchain)
+        if (swapchain && target != swapchain)
             blitRegion(commands, target, whole, swapchain, whole, SDL_GPU_FILTER_NEAREST,
                        SDL_GPU_LOADOP_DONT_CARE);
 
@@ -4623,6 +4642,7 @@ bool SdlGpuBackend::openWindow(const char *title, uint32_t width, uint32_t heigh
         m_impl->window = nullptr;
         return false;
     }
+    m_impl->composeHidden = hidden && std::string(hiddenWindow) == "2";
     if (!hidden) {
         SDL_ShowWindow(m_impl->window);
         SDL_RaiseWindow(m_impl->window);

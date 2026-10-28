@@ -345,4 +345,8 @@ The target trace numbers the batches from each present (`[target] batch N`),
 as a frame log numbers them. `DQ8_GFX_HIDDEN_WINDOW=1` creates the window
 hidden and never raises it, for scripted runs that should leave the desktop
 alone; the GS work is the same and `DQ8_GFX_SCREENSHOT_DIR` still writes
-frames.
+frames. `DQ8_GFX_HIDDEN_WINDOW=2` also composes each frame off screen at the
+window's size, as it would be shown: the menu then draws, its `RG_UI_SCRIPT`
+runs and screenshots (F12, the script's `screenshot`) are written, for
+unattended tests of the menu and of the picture's filters (Rogue Galaxy:
+added; =1 leaves that work out, for benchmarks).
