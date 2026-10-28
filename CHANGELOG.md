@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- HD texture packs: every item icon is HD. The icon sheet the menus draw
+  from (items, equipment, allies, shops, the developers' item grid) had
+  stayed native: the game animates one of its icons in place and draws the
+  glow behind equipped items with a one-colour palette, so the sheet never
+  matched its pack file. The renderer now composes it from the pack's
+  picture and the disc's own (`native_<key>.png` beside it, written by the
+  pack builder), follows the animation, and draws the glow from the HD
+  icons. Icons the game copies into other textures (the party's weapons in
+  `work_icon`) are composed from the same picture.
+
 - Display > Internal resolution: Auto picks the scale from the window's
   height in pixels (1080: 3x, 1440: 4x, 2160: 5x; oversampling 1.0 / 1.25 /
   1.5, at most 6x by default) and follows the window as it changes.

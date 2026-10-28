@@ -414,6 +414,43 @@ uint64_t GsTextureCache::replacementStamp() const {
 
 void GsTextureCache::dropReplacement(Entry &entry) {
     entry.hdWait = false;
+    entry.hdWaitAtlas = false;
+    entry.hdComposed = false;
+    entry.hdAtlas.reset();
+    entry.hdSources.clear();
+    entry.hdLast.clear();
+    entry.hdLast.shrink_to_fit();
+    entry.hdLastTexels = 0u;
+    entry.hdAtlasClut = 0u;
+    entry.hdImage.clear();
+    entry.hdImage.shrink_to_fit();
+    entry.hdNoVariant.clear();
+    if (entry.hdMain) {
+        // A composed picture and its variants are the entry's own; `hd`
+        // points at one of them.
+        std::vector<SDL_GPUTexture *> owned{entry.hdMain};
+        for (const Entry::Variant &variant : entry.hdVariants)
+            owned.push_back(variant.texture);
+        for (SDL_GPUTexture *texture : owned) {
+            beforeRewrite(texture);
+            if (m_device.valid())
+                SDL_ReleaseGPUTexture(m_device.handle(), texture);
+        }
+        m_hdBytes -= std::min(m_hdBytes, entry.hdBytes);
+        m_hdTextures -= std::min<uint64_t>(m_hdTextures, owned.size());
+        entry.hdMain = nullptr;
+        entry.hdVariants.clear();
+        entry.hd = nullptr;
+        entry.hdScale = 1u;
+        entry.hdRegion = {};
+        entry.hdHash = 0u;
+        entry.hdBytes = 0u;
+        entry.hdLevels = 1u;
+        GsReplacementStore::instance().noteGpu(m_hdBytes, m_hdTextures);
+        ++m_stats.replacementsDropped;
+        return;
+    }
+    entry.hdVariants.clear();
     if (!entry.hd)
         return;
     if (entry.hdPooled) {
@@ -478,6 +515,8 @@ void GsTextureCache::matchReplacement(const GsTextureKey &key, Entry &entry) {
     entry.hdWait = false;
     const std::vector<GsReplacementShape> shapes = store.shapes(key.psm, key.width, key.height);
     if (shapes.empty() || !entry.texture || (entry.renderable && entry.identity.texels == 0u)) {
+        if (matchAtlas(key, entry))
+            return;
         dropReplacement(entry);
         learnTexture(key, entry);
         return;
@@ -550,12 +589,21 @@ void GsTextureCache::matchReplacement(const GsTextureKey &key, Entry &entry) {
             return;
         }
     }
+    if (matchAtlas(key, entry))
+        return;
     dropReplacement(entry);
     learnTexture(key, entry);
 }
 
 void GsTextureCache::retryWait(const GsTextureKey &key, Entry &entry) {
     GsReplacementStore &store = GsReplacementStore::instance();
+    if (entry.hdWaitAtlas) {
+        entry.hdWait = false;
+        entry.hdWaitAtlas = false;
+        if (!matchAtlas(key, entry))
+            dropReplacement(entry);
+        return;
+    }
     // The part must still hold the texels it was asked for.
     if (!entry.unresolved.empty() && entry.unresolved.intersects(entry.hdWaitPart)) {
         entry.hdWait = false;
@@ -837,6 +885,11 @@ void GsTextureCache::learnTexture(const GsTextureKey &key, Entry &entry) {
 
 void GsTextureCache::followReplacement(const GsTextureKey &key, Entry &entry, const GsRegion &region,
                                        bool uploaded) {
+    if (entry.hdComposed) {
+        if (uploaded)
+            patchAtlas(key, entry, region);
+        return;
+    }
     if (!entry.hd) {
         // A texture with no picture yet: worth a lookup only when the
         // store has one of its format and size, and texels it would hash
@@ -848,6 +901,9 @@ void GsTextureCache::followReplacement(const GsTextureKey &key, Entry &entry, co
                 matchReplacement(key, entry);
                 return;
             }
+        // Icons copied into a texture of a size no file has (work_icon).
+        if (gsIsIndexedPsm(key.psm) && !currentAtlases().empty())
+            matchReplacement(key, entry);
         return;
     }
     if (entry.renderable) {
@@ -895,6 +951,660 @@ void GsTextureCache::followReplacement(const GsTextureKey &key, Entry &entry, co
     const GsRegion &part = entry.hdRegion;
     put(std::max(region.x0, part.x1), region.y0, region.x1, std::min(region.y1, part.y1));
     put(region.x0, std::max(region.y0, part.y1), region.x1, region.y1);
+}
+
+// ---- Atlases (Rogue Galaxy: added) -----------------------------------------
+//
+// Rogue Galaxy's item icon sheet (1024x960 in a 1024x1024 TEX0) never hashes
+// to its pack file: a TEX_ANIME script copies one of three frames of an
+// animated icon into a 40x40 slot of it, and a line of other texels lands in
+// it besides. work_icon (256x128) is filled on the CPU with the party's weapon
+// icons copied out of the sheet. Both are composed here from the sheet's HD
+// picture: a texel the same as the disc's (the atlas's native picture) at its
+// place takes the HD picture there; a 32x32 cell equal to one of the atlas's
+// icons takes that icon's; any other changed block found in an atlas (a
+// TEX_ANIME frame) takes the HD picture of where it was found; the rest is
+// the game's texel, enlarged. The game's later changes re-compose only the
+// 32-texel cells that changed.
+
+namespace {
+
+// RGBA8 with the GS's alpha (0x80 opaque) to 255 opaque, as files and the
+// atlases' native pictures have it (the learn writer's conversion).
+void toFileAlpha(const uint8_t *gs, size_t texels, std::vector<uint8_t> &out) {
+    out.assign(gs, gs + texels * 4u);
+    for (size_t i = 3u; i < out.size(); i += 4u)
+        out[i] = static_cast<uint8_t>(std::min<uint32_t>(255u, out[i] * 255u / 128u));
+}
+
+uint64_t blockHash(const uint8_t *rgba, uint32_t stride, uint32_t x, uint32_t y, uint32_t w, uint32_t h) {
+    uint64_t hash = 1469598103934665603ull ^ (uint64_t(w) << 32u) ^ h;
+    for (uint32_t row = 0u; row < h; ++row) {
+        const uint8_t *p = rgba + (static_cast<size_t>(y + row) * stride + x) * 4u;
+        for (uint32_t i = 0u; i < w * 4u; ++i)
+            hash = (hash ^ p[i]) * 1099511628211ull;
+    }
+    return hash;
+}
+
+GsRegion alignToCells(const GsRegion &region, uint32_t width, uint32_t height) {
+    const uint32_t c = GsReplacementAtlas::kCell;
+    return {region.x0 / c * c, region.y0 / c * c, std::min(width, (region.x1 + c - 1u) / c * c),
+            std::min(height, (region.y1 + c - 1u) / c * c)};
+}
+
+} // namespace
+
+const std::vector<std::shared_ptr<const GsReplacementAtlas>> &GsTextureCache::currentAtlases() {
+    GsReplacementStore &store = GsReplacementStore::instance();
+    const uint64_t generation = store.generation();
+    if (generation != m_atlasGeneration) {
+        m_atlasGeneration = generation;
+        auto atlases = store.atlases();
+        bool same = atlases.size() == m_atlases.size();
+        for (size_t i = 0u; same && i < atlases.size(); ++i)
+            same = atlases[i] == m_atlases[i];
+        if (!same) {
+            m_atlases = std::move(atlases);
+            m_atlasSearch.clear();
+        }
+    }
+    return m_atlases;
+}
+
+bool GsTextureCache::matchAtlas(const GsTextureKey &key, Entry &entry) {
+    GsReplacementStore &store = GsReplacementStore::instance();
+    if (!entry.texture || entry.renderable || !entry.unresolved.empty() || !gsIsIndexedPsm(key.psm))
+        return false;
+    const auto &atlases = currentAtlases();
+    if (atlases.empty())
+        return false;
+    const uint64_t clut = entry.identity.clut ? entry.identity.clut : hashClutWindow(key);
+    // Drawn with another palette for now: the picture waits for the
+    // atlas's palette to come back (while its atlases are still there).
+    if (entry.hdComposed && entry.hdMain && clut != entry.hdAtlasClut &&
+        std::all_of(entry.hdSources.begin(), entry.hdSources.end(), [&](const AtlasSource &source) {
+            return std::find(atlases.begin(), atlases.end(), source.atlas) != atlases.end();
+        })) {
+        showAtlasVariant(key, entry, clut);
+        entry.hdStamp = replacementStamp();
+        return true;
+    }
+    std::vector<std::shared_ptr<const GsReplacementAtlas>> usable;
+    for (const auto &atlas : atlases)
+        if (atlas->key.psm == key.psm && (atlas->key.clut == 0u || atlas->key.clut == clut))
+            usable.push_back(atlas);
+    if (usable.empty())
+        return false;
+
+    const uint32_t width = key.width, height = key.height;
+    const GsRegion whole{0u, 0u, width, height};
+    expand(key, whole);
+    const std::vector<uint8_t> native = m_staging;
+    std::vector<uint8_t> png;
+    toFileAlpha(native.data(), static_cast<size_t>(width) * height, png);
+
+    // The atlas the texture is: its top-left part holds the atlas's texels,
+    // a few changed (at most 1 in 32).
+    std::shared_ptr<const GsReplacementAtlas> self;
+    for (const auto &atlas : usable) {
+        if (atlas->width > width || atlas->height > height)
+            continue;
+        uint64_t differing = 0u;
+        const uint64_t area = uint64_t(atlas->width) * atlas->height, limit = area / 32u;
+        for (uint32_t y = 0u; y < atlas->height && differing <= limit; ++y)
+            for (uint32_t x = 0u; x < atlas->width; ++x)
+                differing += std::memcmp(png.data() + (size_t(y) * width + x) * 4u,
+                                         atlas->rgba.data() + (size_t(y) * atlas->width + x) * 4u, 4u) != 0;
+        if (differing <= limit) {
+            self = atlas;
+            break;
+        }
+    }
+    if (!self) {
+        // A texture filled with an atlas's icons: at least half of its
+        // 32x32 cells that are not one colour are icons of an atlas.
+        const uint32_t c = GsReplacementAtlas::kCell;
+        if (width % c != 0u || height % c != 0u)
+            return false;
+        uint32_t varied = 0u, icons = 0u;
+        for (uint32_t y = 0u; y < height; y += c)
+            for (uint32_t x = 0u; x < width; x += c) {
+                const uint8_t *origin = png.data() + (size_t(y) * width + x) * 4u;
+                bool differs = false;
+                for (uint32_t row = 0u; row < c && !differs; ++row)
+                    for (uint32_t i = 0u; i < c && !differs; ++i)
+                        differs = std::memcmp(origin, origin + (size_t(row) * width + i) * 4u, 4u) != 0;
+                if (!differs)
+                    continue;
+                ++varied;
+                const uint64_t hash = GsReplacementAtlas::cellHash(origin, width);
+                for (const auto &atlas : usable)
+                    if (atlas->cells.count(hash)) {
+                        ++icons;
+                        break;
+                    }
+            }
+        if (icons == 0u || icons * 2u < varied)
+            return false;
+    }
+
+    // The atlases' HD pictures (the self atlas's first).
+    if (self) {
+        auto at = std::find(usable.begin(), usable.end(), self);
+        std::rotate(usable.begin(), at, at + 1);
+    }
+    const uint64_t seen = store.completions();
+    std::vector<AtlasSource> sources;
+    bool waiting = false;
+    for (const auto &atlas : usable) {
+        GsReplacementPicture picture;
+        // The icons are cut-outs; the HD alpha is hardened like any cut-out's.
+        const GsPictureStatus status = store.picture(atlas->key, m_targets.scale(), nullptr, picture, true);
+        if (status == GsPictureStatus::Pending)
+            waiting = true;
+        else if (status == GsPictureStatus::Ready && picture.image)
+            sources.push_back({atlas, picture.image, picture.scale});
+        else if (atlas == self)
+            return false;
+    }
+    if (waiting) {
+        entry.hdWait = true;
+        entry.hdWaitAtlas = true;
+        entry.hdWaitSeen = seen;
+        return true;
+    }
+    if (sources.empty())
+        return false;
+    const uint32_t s = sources.front().scale;
+    sources.erase(std::remove_if(sources.begin(), sources.end(),
+                                 [&](const AtlasSource &source) { return source.scale != s; }),
+                  sources.end());
+
+    // Bound to the same atlases already: only the cells that changed.
+    const bool sameSources = entry.hdComposed && entry.hdMain && entry.hdScale == s &&
+                             entry.hdAtlas == self && entry.hdAtlasClut == clut &&
+                             entry.hdSources.size() == sources.size() &&
+                             std::equal(sources.begin(), sources.end(), entry.hdSources.begin(),
+                                        [](const AtlasSource &a, const AtlasSource &b) {
+                                            return a.atlas == b.atlas && a.image == b.image;
+                                        });
+    entry.hdStamp = replacementStamp();
+    if (sameSources) {
+        patchAtlas(key, entry, whole);
+        return true;
+    }
+
+    const uint64_t hdWidth = uint64_t(width) * s, hdHeight = uint64_t(height) * s;
+    const uint64_t bytes = hdWidth * hdHeight * 4u;
+    if (hdWidth > 8192u || hdHeight > 8192u || bytes > (256ull << 20u))
+        return false;
+    if (!makeRoom(bytes, &entry)) {
+        entry.hdRetryAt = std::chrono::duration_cast<std::chrono::microseconds>(
+                              std::chrono::steady_clock::now().time_since_epoch())
+                              .count() +
+                          5000000;
+        ++m_hdDenied;
+        return false;
+    }
+    const int64_t now = std::chrono::duration_cast<std::chrono::microseconds>(
+                            std::chrono::steady_clock::now().time_since_epoch())
+                            .count();
+    if (now - m_hdWindowStart > 16000) {
+        m_hdWindowStart = now;
+        m_hdWindowBytes = 0u;
+    }
+    if (m_hdWindowBytes != 0u && m_hdWindowBytes + bytes > m_hdUploadAllowance) {
+        entry.hdWait = true;
+        entry.hdWaitAtlas = true;
+        entry.hdWaitSeen = 0u; // asks again at the next use
+        return true;
+    }
+    m_hdWindowBytes += bytes;
+
+    const auto start = std::chrono::steady_clock::now();
+    dropReplacement(entry);
+    entry.hdComposed = true;
+    entry.hdAtlas = self;
+    entry.hdAtlasClut = clut;
+    entry.hdSources = std::move(sources);
+    std::vector<uint8_t> composed;
+    composeAtlas(entry, whole, png.data(), native.data(), s, composed);
+
+    SDL_GPUTextureCreateInfo info{};
+    info.type = SDL_GPU_TEXTURETYPE_2D;
+    info.format = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
+    info.width = static_cast<uint32_t>(hdWidth);
+    info.height = static_cast<uint32_t>(hdHeight);
+    info.layer_count_or_depth = 1u;
+    info.num_levels = 1u;
+    info.sample_count = SDL_GPU_SAMPLECOUNT_1;
+    info.usage = SDL_GPU_TEXTUREUSAGE_SAMPLER;
+    SDL_GPUTexture *texture = SDL_CreateGPUTexture(m_device.handle(), &info);
+    std::string error;
+    if (!texture || !uploadRect(texture, 0u, 0u, info.width, info.height, composed.data(), error)) {
+        std::fprintf(stderr, "[texrep] atlas texture: %s; the game's texture stays\n",
+                     texture ? error.c_str() : SDL_GetError());
+        if (texture)
+            SDL_ReleaseGPUTexture(m_device.handle(), texture);
+        entry.hdComposed = false;
+        entry.hdAtlas.reset();
+        entry.hdSources.clear();
+        return false;
+    }
+    entry.hd = texture;
+    entry.hdMain = texture;
+    entry.hdScale = s;
+    entry.hdRegion = whole;
+    entry.hdHash = 0u;
+    entry.hdBytes = bytes;
+    entry.hdLevels = 1u;
+    entry.hdUse = ++m_useTick;
+    entry.hdUseTime = now;
+    entry.hdLast = std::move(png);
+    entry.hdImage = std::move(composed);
+    entry.hdLastTexels = entry.identity.texels;
+    m_hdBytes += bytes;
+    ++m_hdTextures;
+    ++m_stats.replacements;
+    GsReplacementStore::instance().noteGpu(m_hdBytes, m_hdTextures);
+    std::fprintf(stderr, "[texrep] tbp0=%05x psm=%02x %ux%u: composed at %ux from %s %016llx in %.1f ms\n",
+                 key.tbp0, key.psm, width, height, s, self ? "its atlas" : "the icons of",
+                 static_cast<unsigned long long>((self ? self->key : entry.hdSources.front().atlas->key).texels),
+                 std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count());
+    return true;
+}
+
+void GsTextureCache::composeAtlas(const Entry &entry, const GsRegion &box, const uint8_t *png, const uint8_t *native,
+                                  uint32_t s, std::vector<uint8_t> &out) {
+    const uint32_t bw = box.width(), bh = box.height();
+    const size_t outStride = size_t(bw) * s * 4u;
+    out.resize(outStride * bh * s);
+    // The game's texels, enlarged.
+    for (uint32_t y = 0u; y < bh * s; ++y) {
+        uint8_t *row = out.data() + y * outStride;
+        const uint8_t *source = native + size_t(y / s) * bw * 4u;
+        for (uint32_t x = 0u; x < bw * s; ++x)
+            std::memcpy(row + size_t(x) * 4u, source + size_t(x / s) * 4u, 4u);
+    }
+    // `w` x `h` texels of a source's HD picture at (sx, sy) to box texel (dx, dy).
+    const auto copy = [&](const AtlasSource &source, uint32_t sx, uint32_t sy, uint32_t dx, uint32_t dy, uint32_t w,
+                          uint32_t h) {
+        const GsReplacementImage &image = *source.image;
+        for (uint32_t y = 0u; y < h * s; ++y)
+            std::memcpy(out.data() + (size_t(dy) * s + y) * outStride + size_t(dx) * s * 4u,
+                        image.rgba.data() + ((size_t(sy) * s + y) * image.width + size_t(sx) * s) * 4u,
+                        size_t(w) * s * 4u);
+    };
+    std::vector<uint8_t> done(size_t(bw) * bh, 0u);
+    const GsReplacementAtlas *self = entry.hdAtlas.get();
+    // Texels that are the atlas's own.
+    if (self) {
+        const AtlasSource &source = entry.hdSources.front();
+        for (uint32_t y = box.y0; y < std::min(box.y1, self->height); ++y) {
+            uint32_t x = box.x0;
+            const uint32_t x1 = std::min(box.x1, self->width);
+            while (x < x1) {
+                // Runs of equal texels, copied a run at a time.
+                const auto same = [&](uint32_t at) {
+                    return std::memcmp(png + (size_t(y - box.y0) * bw + (at - box.x0)) * 4u,
+                                       self->rgba.data() + (size_t(y) * self->width + at) * 4u, 4u) == 0;
+                };
+                if (!same(x)) {
+                    ++x;
+                    continue;
+                }
+                uint32_t end = x + 1u;
+                while (end < x1 && same(end))
+                    ++end;
+                copy(source, x, y, x - box.x0, y - box.y0, end - x, 1u);
+                std::fill(done.begin() + size_t(y - box.y0) * bw + (x - box.x0),
+                          done.begin() + size_t(y - box.y0) * bw + (end - box.x0), 1u);
+                x = end;
+            }
+        }
+    }
+    const auto pending = [&](uint32_t x, uint32_t y) {
+        const size_t at = size_t(y) * bw + x;
+        if (done[at])
+            return false;
+        // Outside the atlas's part of the texture, the game's texels stay;
+        // in a filled texture, transparent texels need nothing.
+        if (self)
+            return box.x0 + x < self->width && box.y0 + y < self->height;
+        return png[at * 4u + 3u] != 0u;
+    };
+    // Cells that are an atlas's icon.
+    const uint32_t c = GsReplacementAtlas::kCell;
+    for (uint32_t y = (box.y0 + c - 1u) / c * c; y + c <= box.y1; y += c)
+        for (uint32_t x = (box.x0 + c - 1u) / c * c; x + c <= box.x1; x += c) {
+            const uint32_t lx = x - box.x0, ly = y - box.y0;
+            bool any = false;
+            for (uint32_t row = 0u; row < c && !any; ++row)
+                for (uint32_t i = 0u; i < c && !any; ++i)
+                    any = pending(lx + i, ly + row);
+            if (!any)
+                continue;
+            const uint8_t *origin = png + (size_t(ly) * bw + lx) * 4u;
+            const uint64_t hash = GsReplacementAtlas::cellHash(origin, bw);
+            for (const AtlasSource &source : entry.hdSources) {
+                const auto found = source.atlas->cells.find(hash);
+                if (found == source.atlas->cells.end())
+                    continue;
+                const GsReplacementAtlas &atlas = *source.atlas;
+                const uint32_t ax = found->second % (atlas.width / c) * c, ay = found->second / (atlas.width / c) * c;
+                bool equal = true;
+                for (uint32_t row = 0u; row < c && equal; ++row)
+                    equal = std::memcmp(origin + size_t(row) * bw * 4u,
+                                        atlas.rgba.data() + (size_t(ay + row) * atlas.width + ax) * 4u, c * 4u) == 0;
+                if (!equal)
+                    continue;
+                copy(source, ax, ay, lx, ly, c, c);
+                for (uint32_t row = 0u; row < c; ++row)
+                    std::fill(done.begin() + size_t(ly + row) * bw + lx, done.begin() + size_t(ly + row) * bw + lx + c,
+                              1u);
+                break;
+            }
+        }
+    // Other changed blocks (a TEX_ANIME frame): grouped by 4x4 tiles that
+    // touch, and looked for in the atlases texel for texel.
+    const uint32_t t = 4u, tw = (bw + t - 1u) / t, th = (bh + t - 1u) / t;
+    std::vector<uint8_t> tile(size_t(tw) * th, 0u);
+    bool anyPending = false;
+    for (uint32_t y = 0u; y < bh; ++y)
+        for (uint32_t x = 0u; x < bw; ++x)
+            if (pending(x, y)) {
+                tile[size_t(y / t) * tw + x / t] = 1u;
+                anyPending = true;
+            }
+    if (!anyPending)
+        return;
+    std::vector<uint32_t> stack;
+    for (uint32_t start = 0u; start < tile.size(); ++start) {
+        if (tile[start] != 1u)
+            continue;
+        uint32_t tx0 = tw, ty0 = th, tx1 = 0u, ty1 = 0u;
+        stack.assign(1u, start);
+        tile[start] = 2u;
+        while (!stack.empty()) {
+            const uint32_t at = stack.back();
+            stack.pop_back();
+            const uint32_t tx = at % tw, ty = at / tw;
+            tx0 = std::min(tx0, tx), ty0 = std::min(ty0, ty), tx1 = std::max(tx1, tx), ty1 = std::max(ty1, ty);
+            for (int dy = -1; dy <= 1; ++dy)
+                for (int dx = -1; dx <= 1; ++dx) {
+                    const int nx = int(tx) + dx, ny = int(ty) + dy;
+                    if (nx < 0 || ny < 0 || nx >= int(tw) || ny >= int(th))
+                        continue;
+                    const uint32_t next = uint32_t(ny) * tw + uint32_t(nx);
+                    if (tile[next] == 1u) {
+                        tile[next] = 2u;
+                        stack.push_back(next);
+                    }
+                }
+        }
+        // The pending texels' own bounds within those tiles.
+        uint32_t x0 = bw, y0 = bh, x1 = 0u, y1 = 0u, opaque = 0u;
+        for (uint32_t y = ty0 * t; y < std::min(bh, (ty1 + 1u) * t); ++y)
+            for (uint32_t x = tx0 * t; x < std::min(bw, (tx1 + 1u) * t); ++x)
+                if (pending(x, y)) {
+                    x0 = std::min(x0, x), y0 = std::min(y0, y), x1 = std::max(x1, x + 1u), y1 = std::max(y1, y + 1u);
+                    opaque += png[(size_t(y) * bw + x) * 4u + 3u] != 0u;
+                }
+        if (x0 >= x1 || x1 - x0 < 4u || y1 - y0 < 4u || opaque < 16u)
+            continue;
+        const uint32_t w = x1 - x0, h = y1 - y0;
+        const uint64_t hash = blockHash(png, bw, x0, y0, w, h);
+        AtlasHit hit;
+        if (const auto known = m_atlasSearch.find(hash); known != m_atlasSearch.end()) {
+            hit = known->second;
+        } else {
+            // The row with the most opaque texels is compared first.
+            uint32_t anchor = 0u, best = 0u;
+            for (uint32_t row = 0u; row < h; ++row) {
+                uint32_t count = 0u;
+                for (uint32_t i = 0u; i < w; ++i)
+                    count += png[(size_t(y0 + row) * bw + x0 + i) * 4u + 3u] != 0u;
+                if (count > best)
+                    best = count, anchor = row;
+            }
+            const uint8_t *anchorRow = png + (size_t(y0 + anchor) * bw + x0) * 4u;
+            for (const AtlasSource &source : entry.hdSources) {
+                const GsReplacementAtlas &atlas = *source.atlas;
+                if (w > atlas.width || h > atlas.height)
+                    continue;
+                // Its own rows first (an animation's frames sit side by side).
+                const uint32_t ownY = box.y0 + y0;
+                std::vector<uint32_t> rows;
+                if (ownY + h <= atlas.height)
+                    rows.push_back(ownY);
+                for (uint32_t sy = 0u; sy + h <= atlas.height; ++sy)
+                    if (sy != ownY)
+                        rows.push_back(sy);
+                for (const uint32_t sy : rows) {
+                    const uint8_t *line = atlas.rgba.data() + size_t(sy + anchor) * atlas.width * 4u;
+                    for (uint32_t sx = 0u; sx + w <= atlas.width; ++sx) {
+                        if (std::memcmp(anchorRow, line + size_t(sx) * 4u, size_t(w) * 4u) != 0)
+                            continue;
+                        bool equal = true;
+                        for (uint32_t row = 0u; row < h && equal; ++row)
+                            equal = std::memcmp(png + (size_t(y0 + row) * bw + x0) * 4u,
+                                                atlas.rgba.data() + (size_t(sy + row) * atlas.width + sx) * 4u,
+                                                size_t(w) * 4u) == 0;
+                        if (equal) {
+                            hit = {&atlas, sx, sy};
+                            break;
+                        }
+                    }
+                    if (hit.atlas)
+                        break;
+                }
+                if (hit.atlas)
+                    break;
+            }
+            m_atlasSearch[hash] = hit;
+            if (GsReplacementStore::instance().logging())
+                std::fprintf(stderr, "[texrep] atlas block %ux%u at %u,%u: %s %u,%u\n", w, h, box.x0 + x0, box.y0 + y0,
+                             hit.atlas ? "found at" : "not in the atlases", hit.x, hit.y);
+        }
+        if (!hit.atlas)
+            continue;
+        for (const AtlasSource &source : entry.hdSources)
+            if (source.atlas.get() == hit.atlas) {
+                copy(source, hit.x, hit.y, x0, y0, w, h);
+                break;
+            }
+    }
+}
+
+void GsTextureCache::patchAtlas(const GsTextureKey &key, Entry &entry, const GsRegion &region) {
+    const uint32_t width = key.width, height = key.height;
+    if (entry.hdLast.size() != size_t(width) * height * 4u || !entry.hdMain)
+        return;
+    const GsRegion area{std::min(region.x0, width), std::min(region.y0, height), std::min(region.x1, width),
+                        std::min(region.y1, height)};
+    if (area.empty())
+        return;
+    const bool whole = area.x0 == 0u && area.y0 == 0u && area.x1 == width && area.y1 == height;
+    const uint64_t clut = entry.identity.clut ? entry.identity.clut : hashClutWindow(key);
+    if (clut != entry.hdAtlasClut) {
+        // Another palette. Texels it changed meanwhile are composed when
+        // the atlas's palette is back (they cannot be told apart in it).
+        if (!whole || entry.identity.texels != entry.hdLastTexels)
+            entry.hdLastTexels = 0u;
+        showAtlasVariant(key, entry, clut);
+        return;
+    }
+    entry.hd = entry.hdMain;
+    // The palette came back over texels already composed.
+    if (whole && entry.identity.texels != 0u && entry.identity.texels == entry.hdLastTexels)
+        return;
+    entry.hdLastTexels = whole ? entry.identity.texels : 0u;
+    // Which texels changed since the picture was composed.
+    expand(key, area);
+    std::vector<uint8_t> png;
+    toFileAlpha(m_staging.data(), size_t(area.width()) * area.height(), png);
+    // The 32-texel cells with a changed texel.
+    const uint32_t c = GsReplacementAtlas::kCell, cw = (width + c - 1u) / c, ch = (height + c - 1u) / c;
+    std::vector<uint8_t> changed(size_t(cw) * ch, 0u);
+    bool any = false;
+    for (uint32_t y = area.y0; y < area.y1; ++y) {
+        const uint8_t *now = png.data() + size_t(y - area.y0) * area.width() * 4u;
+        const uint8_t *last = entry.hdLast.data() + (size_t(y) * width + area.x0) * 4u;
+        if (std::memcmp(now, last, size_t(area.width()) * 4u) == 0)
+            continue;
+        for (uint32_t x = area.x0; x < area.x1; ++x)
+            if (std::memcmp(now + size_t(x - area.x0) * 4u, last + size_t(x - area.x0) * 4u, 4u) != 0) {
+                changed[size_t(y / c) * cw + x / c] = 1u;
+                any = true;
+            }
+    }
+    if (!any)
+        return;
+    // Composed and uploaded a run of cells along a row at a time, into the
+    // picture and its variants.
+    const uint32_t s = entry.hdScale;
+    const size_t imageStride = size_t(width) * s * 4u;
+    std::vector<uint8_t> composed, recolored;
+    std::string error;
+    beforeRewrite(entry.hdMain);
+    for (const Entry::Variant &variant : entry.hdVariants)
+        beforeRewrite(variant.texture);
+    for (uint32_t cy = 0u; cy < ch; ++cy)
+        for (uint32_t cx = 0u; cx < cw; ++cx) {
+            if (!changed[size_t(cy) * cw + cx])
+                continue;
+            uint32_t end = cx + 1u;
+            while (end < cw && changed[size_t(cy) * cw + end])
+                ++end;
+            const GsRegion box{cx * c, cy * c, std::min(width, end * c), std::min(height, (cy + 1u) * c)};
+            cx = end;
+            expand(key, box);
+            const std::vector<uint8_t> native = m_staging;
+            toFileAlpha(native.data(), size_t(box.width()) * box.height(), png);
+            composeAtlas(entry, box, png.data(), native.data(), s, composed);
+            const size_t rowBytes = size_t(box.width()) * s * 4u;
+            for (uint32_t y = 0u; y < box.height() * s; ++y)
+                std::memcpy(entry.hdImage.data() + (size_t(box.y0) * s + y) * imageStride + size_t(box.x0) * s * 4u,
+                            composed.data() + y * rowBytes, rowBytes);
+            if (!uploadRect(entry.hdMain, box.x0 * s, box.y0 * s, box.width() * s, box.height() * s, composed.data(),
+                            error))
+                std::fprintf(stderr, "[texrep] atlas upload: %s\n", error.c_str());
+            for (const Entry::Variant &variant : entry.hdVariants) {
+                recolorAtlas(entry, variant, box, recolored);
+                if (!uploadRect(variant.texture, box.x0 * s, box.y0 * s, box.width() * s, box.height() * s,
+                                recolored.data(), error))
+                    std::fprintf(stderr, "[texrep] atlas upload: %s\n", error.c_str());
+            }
+            for (uint32_t y = box.y0; y < box.y1; ++y)
+                std::memcpy(entry.hdLast.data() + (size_t(y) * width + box.x0) * 4u,
+                            png.data() + size_t(y - box.y0) * box.width() * 4u, size_t(box.width()) * 4u);
+            if (GsReplacementStore::instance().logging())
+                std::fprintf(stderr, "[texrep] tbp0=%05x %ux%u: atlas cells %u,%u-%u,%u composed again\n", key.tbp0,
+                             width, height, box.x0, box.y0, box.x1, box.y1);
+        }
+}
+
+void GsTextureCache::recolorAtlas(const Entry &entry, const Entry::Variant &variant, const GsRegion &box,
+                                  std::vector<uint8_t> &out) const {
+    const uint32_t s = entry.hdScale, w = box.width() * s, h = box.height() * s;
+    const size_t imageStride = size_t(entry.hdRegion.width()) * s * 4u;
+    out.resize(size_t(w) * h * 4u);
+    for (uint32_t y = 0u; y < h; ++y) {
+        const uint8_t *source = entry.hdImage.data() + (size_t(box.y0) * s + y) * imageStride + size_t(box.x0) * s * 4u;
+        uint8_t *row = out.data() + size_t(y) * w * 4u;
+        for (uint32_t x = 0u; x < w; ++x) {
+            row[x * 4u + 0u] = variant.rgba[0];
+            row[x * 4u + 1u] = variant.rgba[1];
+            row[x * 4u + 2u] = variant.rgba[2];
+            // The picture's coverage at the palette's opacity.
+            row[x * 4u + 3u] = static_cast<uint8_t>((uint32_t(source[x * 4u + 3u]) * variant.rgba[3] + 0x40u) / 0x80u);
+        }
+    }
+}
+
+void GsTextureCache::showAtlasVariant(const GsTextureKey &key, Entry &entry, uint64_t clut) {
+    for (const Entry::Variant &variant : entry.hdVariants)
+        if (variant.clut == clut) {
+            entry.hd = variant.texture;
+            return;
+        }
+    entry.hd = nullptr;
+    if (std::find(entry.hdNoVariant.begin(), entry.hdNoVariant.end(), clut) != entry.hdNoVariant.end() ||
+        entry.hdImage.empty())
+        return;
+    // A palette of one colour: every texel the composed picture has opaque
+    // is that colour, every transparent one transparent (a few may differ:
+    // a TEX_ANIME slot changed meanwhile).
+    const uint32_t width = key.width, height = key.height;
+    const GsReplacementAtlas *self = entry.hdAtlas.get();
+    const GsRegion area{0u, 0u, self ? self->width : width, self ? self->height : height};
+    expand(key, area);
+    uint8_t colour[4] = {};
+    bool found = false, flat = true;
+    uint64_t differing = 0u;
+    for (uint32_t y = 0u; y < area.y1 && flat; ++y)
+        for (uint32_t x = 0u; x < area.x1; ++x) {
+            const uint8_t *now = m_staging.data() + (size_t(y) * area.width() + x) * 4u;
+            const bool wasOpaque = entry.hdLast[(size_t(y) * width + x) * 4u + 3u] != 0u;
+            if ((now[3] != 0u) != wasOpaque) {
+                ++differing;
+                continue;
+            }
+            if (now[3] == 0u)
+                continue;
+            if (!found) {
+                std::memcpy(colour, now, 4u);
+                found = true;
+            } else if (std::memcmp(colour, now, 4u) != 0) {
+                flat = false;
+                break;
+            }
+        }
+    if (!flat || !found || differing > uint64_t(area.width()) * area.height() / 256u) {
+        entry.hdNoVariant.push_back(clut);
+        if (GsReplacementStore::instance().logging())
+            std::fprintf(stderr, "[texrep] tbp0=%05x %ux%u: palette %016llx is not one colour; the game's texture\n",
+                         key.tbp0, width, height, static_cast<unsigned long long>(clut));
+        return;
+    }
+    const uint32_t s = entry.hdScale;
+    const uint64_t bytes = uint64_t(width) * s * height * s * 4u;
+    if (!makeRoom(bytes, &entry))
+        return;
+    Entry::Variant variant;
+    variant.clut = clut;
+    std::memcpy(variant.rgba, colour, 4u);
+    std::vector<uint8_t> recolored;
+    recolorAtlas(entry, variant, {0u, 0u, width, height}, recolored);
+    SDL_GPUTextureCreateInfo info{};
+    info.type = SDL_GPU_TEXTURETYPE_2D;
+    info.format = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
+    info.width = width * s;
+    info.height = height * s;
+    info.layer_count_or_depth = 1u;
+    info.num_levels = 1u;
+    info.sample_count = SDL_GPU_SAMPLECOUNT_1;
+    info.usage = SDL_GPU_TEXTUREUSAGE_SAMPLER;
+    variant.texture = SDL_CreateGPUTexture(m_device.handle(), &info);
+    std::string error;
+    if (!variant.texture || !uploadRect(variant.texture, 0u, 0u, info.width, info.height, recolored.data(), error)) {
+        if (variant.texture)
+            SDL_ReleaseGPUTexture(m_device.handle(), variant.texture);
+        entry.hdNoVariant.push_back(clut);
+        return;
+    }
+    entry.hdVariants.push_back(variant);
+    entry.hdBytes += bytes;
+    m_hdBytes += bytes;
+    ++m_hdTextures;
+    GsReplacementStore::instance().noteGpu(m_hdBytes, m_hdTextures);
+    entry.hd = variant.texture;
+    std::fprintf(stderr,
+                 "[texrep] tbp0=%05x %ux%u: palette %016llx is one colour (%02x %02x %02x %02x): the composed "
+                 "picture in it\n",
+                 key.tbp0, width, height, static_cast<unsigned long long>(clut), colour[0], colour[1], colour[2],
+                 colour[3]);
 }
 
 // Expands one texel rectangle into m_staging as tightly packed RGBA8 rows of

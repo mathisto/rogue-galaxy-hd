@@ -42,6 +42,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace dq8::gfx {
@@ -85,6 +86,37 @@ using GsReplacementImageLoader =
 // Writes RGBA8 (alpha 255 opaque) as a PNG.
 using GsReplacementImageWriter =
     std::function<bool(const std::string &path, uint32_t width, uint32_t height, const uint8_t *rgba)>;
+
+// An atlas (Rogue Galaxy: added): a pack file with the disc's own picture
+// beside it, `native_<name>.png` (RGBA8, alpha 255 opaque, the size of the
+// key; older builds take the name for a misnamed file and skip it). A texture the game changes in place (an animated slot, icons copied
+// in) no longer hashes to its file; with the native picture the cache tells
+// which texels are still the disc's and takes the HD picture there, and finds
+// where the changed ones come from (another place in an atlas: a TEX_ANIME
+// frame, an icon) to take the HD picture of that place. Textures the CPU
+// fills with an atlas's 32x32 icons (Rogue Galaxy's work_icon) are composed
+// from its cells the same way.
+struct GsReplacementAtlas {
+    GsReplacementKey key; // the HD file's
+    uint32_t width = 0u;
+    uint32_t height = 0u;
+    std::vector<uint8_t> rgba; // the disc's texels, RGBA8 with 255 opaque
+    // Every 32x32 cell at a multiple of 32 that is not all one colour, by
+    // cellHash(): its cell index, y / 32 * (width / 32) + x / 32.
+    std::unordered_map<uint64_t, uint32_t> cells;
+
+    static constexpr uint32_t kCell = 32u;
+    // FNV-1a over a 32x32 block of RGBA8 rows `stride` texels apart.
+    static uint64_t cellHash(const uint8_t *rgba, uint32_t stride) {
+        uint64_t hash = 1469598103934665603ull;
+        for (uint32_t y = 0u; y < kCell; ++y) {
+            const uint8_t *row = rgba + static_cast<size_t>(y) * stride * 4u;
+            for (uint32_t i = 0u; i < kCell * 4u; ++i)
+                hash = (hash ^ row[i]) * 1099511628211ull;
+        }
+        return hash;
+    }
+};
 
 struct GsReplacementShape {
     uint32_t width = 0u;
@@ -191,6 +223,9 @@ public:
     // Whether a generated picture draws over this texture's file (it then
     // needs the texture's own texels with the file's picture).
     bool drawsOver(const GsReplacementKey &key) const;
+    // The atlases (files with a native picture beside them, read when the
+    // folder is listed); none while the pack's files are off.
+    std::vector<std::shared_ptr<const GsReplacementAtlas>> atlases() const;
     // The picture for a texture. Files are read on a worker: Pending until
     // then. `cutout`: the game's texels have only transparent and opaque
     // alpha (for GsCutoutAlpha::Threshold).

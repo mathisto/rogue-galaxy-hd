@@ -159,6 +159,12 @@ public:
     GsPageSet sourcePagesFor(const GSDrawState &state) const;
 
 private:
+    // An atlas and its HD picture, for a texture composed from it.
+    struct AtlasSource {
+        std::shared_ptr<const GsReplacementAtlas> atlas;
+        std::shared_ptr<const GsReplacementImage> image;
+        uint32_t scale = 1u;
+    };
     struct Entry {
         SDL_GPUTexture *texture = nullptr;
         // Texture pages and palette pages together, for callers that ask
@@ -226,6 +232,36 @@ private:
         GsReplacementKey hdWaitKey;
         GsRegion hdWaitPart;
         uint64_t hdWaitSeen = 0u;
+        // Composed from atlases (Rogue Galaxy: added; matchAtlas): `hd` is
+        // its own, made from the atlases' HD pictures where the texels are
+        // theirs, and patched as the game changes them. `hdAtlas` is the
+        // atlas the texture is (none: a texture the CPU filled with an
+        // atlas's icons); `hdLast` the texels (RGBA8, 255 opaque) it was
+        // composed for; `hdWaitAtlas` a wait for its pictures.
+        // `hdMain` is the composed picture (owned here; `hd` points at it or
+        // at a variant), `hdImage` its texels. Drawn with another palette
+        // than the atlas's: a palette of one colour (Rogue Galaxy's icon
+        // sheet in flat cyan, the glow behind equipped icons, every other
+        // draw in the item menu) gets a variant of the picture in that colour
+        // (`hdVariants`); any other palette the game's texture
+        // (`hdNoVariant`). `hdLastTexels`: the raw texel hash `hdLast` was
+        // taken at (0: unknown), so a palette flip back costs no compare.
+        bool hdComposed = false;
+        bool hdWaitAtlas = false;
+        std::shared_ptr<const GsReplacementAtlas> hdAtlas;
+        std::vector<AtlasSource> hdSources;
+        std::vector<uint8_t> hdLast;
+        std::vector<uint8_t> hdImage;
+        SDL_GPUTexture *hdMain = nullptr;
+        struct Variant {
+            uint64_t clut = 0u;
+            uint8_t rgba[4] = {};
+            SDL_GPUTexture *texture = nullptr;
+        };
+        std::vector<Variant> hdVariants;
+        std::vector<uint64_t> hdNoVariant;
+        uint64_t hdAtlasClut = 0u;
+        uint64_t hdLastTexels = 0u;
     };
 
     std::function<void(SDL_GPUTexture *)> m_beforeRewrite;
@@ -297,6 +333,27 @@ private:
     // needs more than the budget: the new picture waits, rather than
     // pictures in use being read and uploaded again every frame).
     bool makeRoom(uint64_t incoming, const Entry *keep);
+    // Atlases (Rogue Galaxy: added). A texture that is an atlas changed in
+    // place, or that the CPU filled with an atlas's icons, gets a picture
+    // composed from the atlases' HD pictures: true when one is bound or
+    // being read.
+    bool matchAtlas(const GsTextureKey &key, Entry &entry);
+    // The HD texels of `box` (texture texels) into `out`, `scale` times its
+    // size: the self atlas's where the texels are its own, an atlas cell's or
+    // block's where they match one, else the game's texels enlarged. `png` is
+    // the box's texels with 255 opaque, `native` as the cache expands them.
+    void composeAtlas(const Entry &entry, const GsRegion &box, const uint8_t *png, const uint8_t *native,
+                      uint32_t scale, std::vector<uint8_t> &out);
+    // After update() rewrote `region` of a composed texture: re-composes and
+    // uploads the 32-texel cells whose texels changed.
+    void patchAtlas(const GsTextureKey &key, Entry &entry, const GsRegion &region);
+    // Shows the variant of a composed picture for the palette the texture
+    // has now (made the first time it is seen), or the game's texture.
+    void showAtlasVariant(const GsTextureKey &key, Entry &entry, uint64_t clut);
+    // `box` of hdImage in a variant's colour into `out`.
+    void recolorAtlas(const Entry &entry, const Entry::Variant &variant, const GsRegion &box,
+                      std::vector<uint8_t> &out) const;
+    const std::vector<std::shared_ptr<const GsReplacementAtlas>> &currentAtlases();
     // Learn mode: hands a texture with no replacement to the store.
     void learnTexture(const GsTextureKey &key, Entry &entry);
     // After update() rewrote `region` of the game's texture from m_staging:
@@ -371,6 +428,16 @@ private:
     };
     std::unordered_map<GsReplacementKey, PooledHd, ReplacementKeyHash> m_hdPool;
     uint64_t m_poolGeneration = 0u;
+    // The store's atlases as of m_atlasGeneration, and where blocks of
+    // changed texels were found in them (content hash -> atlas, x, y; atlas
+    // null when nowhere), kept until the atlases change (Rogue Galaxy: added).
+    std::vector<std::shared_ptr<const GsReplacementAtlas>> m_atlases;
+    uint64_t m_atlasGeneration = 0u;
+    struct AtlasHit {
+        const GsReplacementAtlas *atlas = nullptr;
+        uint32_t x = 0u, y = 0u;
+    };
+    std::unordered_map<uint64_t, AtlasHit> m_atlasSearch;
     // Releases unreferenced pooled pictures, least recently used first,
     // until the replacement bytes are at `target` (all of them: 0).
     void releasePooled(uint64_t target);

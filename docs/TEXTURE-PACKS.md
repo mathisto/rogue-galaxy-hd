@@ -78,6 +78,12 @@ py -3.12 -I -X utf8 tools\rg_texpack.py build --keys keys.csv ^
   clouds): softer, fewer posterised leaves and streaks. A pack built so is in
   `textures\SCUS-97490\flagged-animevideov3\replacements`; try it with
   `RG_TEXTURE_PACK=textures/SCUS-97490/flagged-animevideov3/replacements`.
+- Atlases: for the TIM2 names given with `--native NAME` (default
+  `item_icon`, the icon sheet), the builder links the disc's own picture
+  beside the upscale as `native_<key>.png` (see Atlases below). A pack built
+  before this has none: link it by hand with
+  `mklink /h replacements\menu\native_a3d85cd21042528c_8cfb075b4730706f_1024x960_psm13.png Q:\work\rg-textures\ui\all\png\59f235aa3f748836.png`.
+  Older builds of the game skip the file (a misnamed file, logged once).
 - `rg_texpack.py validate --keys keys.csv --pack DIR LOG...` reads logs made
   with `RG_TEXTURE_LOG=1` and reports how many of the textures the game built
   the pack names, with a list of the misses and why.
@@ -101,12 +107,12 @@ texture identities, of which 27 are frame copies and render targets. Of the
 | Named by keys computed from the disc | 119 (65%) |
 | Named by learn mode (from an earlier run of the same route) | 28 (15%) |
 | Matched as a part (UI pages in a larger TEX0) | 6 |
-| Item icon atlas (12 states as icons load) | not replaceable |
+| Item icon atlas (12 states as icons load) | composed (Atlases, since 2026-10-28 afternoon) |
 | Text pages (font, names: the modern font) | 7, left out |
 | Pseudo-textures over the frame buffer (one palette, noise) | 7 |
 
 So every disc texture the route showed has its HD picture, apart from the
-icon atlas and the text pages. The keys are exact: of the first 102 textures
+text pages. The keys are exact: of the first 102 textures
 whose texel hash the disc reproduced, 101 also matched the palette hash (the
 other was a palette variant).
 
@@ -132,7 +138,7 @@ rest with the same model and alpha handling as the main set
 (`rg_upscale_batch.py`, about a second per picture), into
 `replacements\learned\`. F8 in the game reads them. Text pages (4-bit
 512-wide sheets: the modern font draws those), atlases over 512 (the item
-icon sheet the game refills) and noise are left out.
+icon sheet: an atlas, below) and noise are left out.
 
 ## Sampling
 
@@ -164,17 +170,82 @@ icon sheet the game refills) and noise are left out.
   not powers of two are looked for (hashing every corner of every texture
   cost more than the game's drawing).
 
+## Atlases: the item icons
+
+The item icon sheet (`item_icon`, 1024x960 T8 in a 1024x1024 TEX0, every
+item's 32x32 icon) never hashes to its pack file once the game runs:
+
+- a TEX_ANIME script (`icon_all2.img`'s `#texanime`) copies one of three
+  40x40 frames of an animated icon into the slot at (512,0) (the script's
+  y 920 counts from the bottom), from x 552 and 592 of the same sheet, every
+  8 to 112 frames;
+- a short line of other texels lands in row 798 (x 508-679, under six icons
+  of the bottom block) on the GS side; the EE copy of the sheet has the
+  disc's texels there;
+- in the item menu every other draw of the sheet uses a palette of one
+  colour (`cbba0287...`, all entries 0x80 0xFF 0xFF 0xFF): the cyan glow
+  behind equipped items.
+
+`work_icon` (256x128) is filled on the CPU (`WorkIconCopyItemIcon`,
+0x28DF20) with 32x32 icons copied out of the EE copy of the sheet: the
+party's weapons (`WorkIconBuildPartyWeaponsMaybe`, at each close of the main
+menu) and the icon of an event's message window (`UiGetWorkIconSprite`).
+
+A pack file with the disc's picture beside it (`native_<key>.png`, RGBA,
+alpha 255 opaque, the key's size) is an **atlas**. When a texture of the
+atlas's format and palette matches no file, the renderer
+(`GsTextureCache::matchAtlas`) composes its HD picture:
+
+1. If its top-left part holds the atlas's texels (at most 1 in 32 differ),
+   the texture is the atlas: each texel equal to the disc's takes the HD
+   picture at its place.
+2. Each 32x32 cell (at multiples of 32) equal to one of the atlas's icons
+   takes that icon's HD picture: this composes `work_icon` (a texture at
+   least half of whose non-empty cells are an atlas's icons), whatever the
+   party carries.
+3. Other changed texels are grouped (4x4 tiles that touch) and each group's
+   box is looked for in the atlases texel for texel (its own rows first); a
+   TEX_ANIME frame is found where the script copied it from.
+4. What is left (the stray line in row 798) is the game's texel, enlarged.
+
+The game's later changes re-compose and upload only the 32-texel cells whose
+texels changed (the animation's 64x32 runs). A palette of one colour gets a
+variant of the composed picture in that colour (the glow, from the HD
+icons' coverage); any other palette shows the game's texture. Costs: 36 ms
+on the GS worker the first time the sheet is composed (64 MB uploaded, 4096
+square at 4x), nothing at a palette flip back (the raw texels' hash is
+kept), 64 MB more on the GPU for the glow variant and 64 MB of main memory
+for the composed texels. The item menu measured the same frame rate as
+before (49.4 against 49.9 fps, hidden window at 4x beside another game).
+
+**The icons' look.** The pack's sheet is the x4plus-anime upscale, like the
+rest of the menus: crisp, bold outlines, but metal blades and coins lose
+their shading to flat black and white, colours get more saturated and a few
+fine icons are redrawn (a snake staff's coils). Two other upscales of the
+sheet sit beside it in `Q:\work\rg-textures\ui\upscaled`: `x4plus\` (the
+general model: keeps the shading and colours, sharpest, a little grain) and
+`animevideov3\` (softest, closest to the native colours, some blur).
+Crops: `research\assets\hd-icons\06-models-*.png`. To try one, replace the
+pack file's link (the key stays the same):
+`del replacements\menu\a3d85cd21042528c_8cfb075b4730706f_1024x960_psm13.png`
+then `mklink /h` it to `Q:\work\rg-textures\ui\upscaled\x4plus\59f235aa3f748836.png`,
+and F8 in the game.
+
+`RG_TEXTURE_LOG=1` logs `composed at 4x from its atlas`, `atlas block WxH at
+X,Y: found at X,Y`, `atlas cells ... composed again` and the palette
+variants.
+
 ## Not covered
 
-- **The item icon sheet** (1024x1024, 8-bit): the game copies each icon into
-  it as menus open, so its content (and key) changes all the time; the icons
-  stay native. Same for `work_icon`, filled by the CPU (0x28DF20).
 - **Text pages**: the modern font redraws them; an AI upscale of letters is
   not used.
 - **Frame copies and render targets** (bloom, the menu's backdrop, shadows):
   not textures from the disc.
-- Partly updated textures (an animated 40x40 slot in the item icons) lose
-  their picture after the first update.
+- Other partly updated textures without a native picture lose their HD
+  picture after the first update (the other `#texanime` destinations are
+  runtime-filled slots; `--native NAME` makes any picture an atlas).
+- Palettes other than the atlas's and one-colour ones (none seen) show the
+  game's icons.
 
 ## Performance
 

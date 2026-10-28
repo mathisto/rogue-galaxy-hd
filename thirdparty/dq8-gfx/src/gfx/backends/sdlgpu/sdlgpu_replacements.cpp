@@ -139,6 +139,8 @@ struct GsReplacementStore::Impl {
     // (psm, width, height) of every file and generated key: shapes() looks
     // here, not through thousands of files.
     std::set<std::tuple<uint32_t, uint32_t, uint32_t>> shapeIndex;
+    // Files with a native picture beside them (scan()).
+    std::vector<std::shared_ptr<const GsReplacementAtlas>> atlases;
 
     struct Generated {
         std::vector<GsReplacementKey> keys;
@@ -301,6 +303,7 @@ struct GsReplacementStore::Impl {
         }
         const auto start = Clock::now();
         std::map<GsReplacementKey, File, KeyLess> found;
+        std::map<GsReplacementKey, std::string, KeyLess> natives;
         size_t misnamed = 0u;
         std::error_code error;
         if (!root.empty() && std::filesystem::is_directory(root, error)) {
@@ -314,7 +317,14 @@ struct GsReplacementStore::Impl {
                 if (extension != ".png")
                     continue;
                 GsReplacementKey key;
-                if (!parseName(it->path().stem().string(), key)) {
+                std::string stem = it->path().stem().string();
+                // native_<name>.png: the disc's picture of an atlas.
+                if (stem.rfind("native_", 0u) == 0u) {
+                    if (parseName(stem.substr(7u), key))
+                        natives[key] = it->path().string();
+                    continue;
+                }
+                if (!parseName(stem, key)) {
                     if (++misnamed <= 8u)
                         std::fprintf(stderr, "[texrep] %s: not a replacement name (texels_clut_WxH_psmNN.png)\n",
                                      it->path().string().c_str());
@@ -328,8 +338,54 @@ struct GsReplacementStore::Impl {
             }
         }
         const double ms = std::chrono::duration<double, std::milli>(Clock::now() - start).count();
+        // The atlases' native pictures are small (1 MB for a 1024x960 sheet)
+        // and few: read here, on the worker.
+        std::vector<std::shared_ptr<const GsReplacementAtlas>> readAtlases;
+        {
+            GsReplacementImageLoader load;
+            {
+                std::lock_guard lock(mutex);
+                load = loader;
+            }
+            for (const auto &[key, path] : natives) {
+                if (!found.count(key) || !load)
+                    continue;
+                auto atlas = std::make_shared<GsReplacementAtlas>();
+                atlas->key = key;
+                uint32_t w = 0u, h = 0u;
+                bool ok = false;
+                try {
+                    ok = load(path, w, h, atlas->rgba) && w == key.width && h == key.height &&
+                         atlas->rgba.size() == static_cast<size_t>(w) * h * 4u;
+                } catch (const std::exception &) {
+                    ok = false;
+                }
+                if (!ok) {
+                    std::fprintf(stderr, "[texrep] %s: not the %ux%u native picture of its atlas; left out\n",
+                                 path.c_str(), key.width, key.height);
+                    continue;
+                }
+                atlas->width = w;
+                atlas->height = h;
+                const uint32_t cell = GsReplacementAtlas::kCell;
+                for (uint32_t y = 0u; y + cell <= h; y += cell)
+                    for (uint32_t x = 0u; x + cell <= w; x += cell) {
+                        const uint8_t *origin = atlas->rgba.data() + (static_cast<size_t>(y) * w + x) * 4u;
+                        bool varied = false;
+                        for (uint32_t row = 0u; row < cell && !varied; ++row)
+                            for (uint32_t i = 0u; i < cell && !varied; ++i)
+                                varied = std::memcmp(origin, origin + (static_cast<size_t>(row) * w + i) * 4u, 4u) != 0;
+                        if (varied)
+                            atlas->cells.emplace(GsReplacementAtlas::cellHash(origin, w), (y / cell) * (w / cell) + x / cell);
+                    }
+                std::fprintf(stderr, "[texrep] atlas %s: %ux%u, %zu icon cells\n",
+                             std::filesystem::path(path).filename().string().c_str(), w, h, atlas->cells.size());
+                readAtlases.push_back(std::move(atlas));
+            }
+        }
         {
             std::lock_guard lock(mutex);
+            atlases = std::move(readAtlases);
             size_t kept = 0u;
             for (auto &[key, file] : files) {
                 auto again = found.find(key);
@@ -817,6 +873,13 @@ bool GsReplacementStore::drawsOver(const GsReplacementKey &key) const {
                 if (listed == key || listed == any)
                     return true;
     return false;
+}
+
+std::vector<std::shared_ptr<const GsReplacementAtlas>> GsReplacementStore::atlases() const {
+    if (!enabled() || !m_impl->filesEnabled.load())
+        return {};
+    std::lock_guard lock(m_impl->mutex);
+    return m_impl->atlases;
 }
 
 GsPictureStatus GsReplacementStore::picture(const GsReplacementKey &key, uint32_t renderScale, const uint8_t *native,
