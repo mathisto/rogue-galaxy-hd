@@ -14,6 +14,8 @@ disc image; nothing of the game is distributed.
 - Widescreen, up to 32:9
 - Up to 8x internal resolution
 - An in-game menu (F1) for graphics, sound and controls
+- Xbox button prompts, a sharp modern font, and texture packs
+  ([FONT-AND-PROMPTS.md](docs/FONT-AND-PROMPTS.md))
 - Game options: camera, field of view, draw distance, instant text,
   encounter rate, experience, money, item drops, shop prices and more
   ([all of them](docs/OPTIONS.md))
@@ -66,6 +68,8 @@ See [docs/OPTIONS.md](docs/OPTIONS.md) for each one.
 
 - [CHANGELOG.md](CHANGELOG.md): what each release brings, and its known issues
 - [docs/OPTIONS.md](docs/OPTIONS.md): the menu and every game option
+- [docs/FONT-AND-PROMPTS.md](docs/FONT-AND-PROMPTS.md): button prompts, the
+  modern font, texture replacement packs
 - [docs/BUILDING.md](docs/BUILDING.md): building by hand, and the project's layout
 - [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md): the debug launchers, profiling and
   the environment variables
@@ -85,7 +89,9 @@ committed.
   Karakaya, the reference for MWo3 overlays on PS2Recomp, and the source of
   the SDL3 GPU GS backend and the in-game menu in `thirdparty/dq8-gfx`.
 - [Dear ImGui](https://github.com/ocornut/imgui) by Omar Cornut (MIT), which
-  the menu is drawn with, and its Roboto Medium font (Apache 2.0).
+  the menu is drawn with, and its Roboto Medium font (Apache 2.0), also the
+  modern in-game font, rasterised with Dear ImGui's copy of
+  [stb_truetype](https://github.com/nothings/stb) (public domain / MIT).
 - [RGDecomp](https://github.com/Dorgengoa/RGDecomp) (CC0), the function maps
   and names for this build (`config/SCUS_974.90/functions_*.csv` derive from
   it).

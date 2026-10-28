@@ -80,6 +80,14 @@ free camera keeps them either way.
 | Shop prices | 10% to 200%. |
 | Action gauge speed | 25% to 400%. |
 
+**Text and prompts** ([FONT-AND-PROMPTS.md](FONT-AND-PROMPTS.md))
+
+| Option | |
+|---|---|
+| Button prompts | PlayStation, Xbox (A, B, X, Y, LB, RB, LT, RT, by position: Cross is A), or Auto (the default: PlayStation buttons for a PlayStation controller, Xbox ones otherwise). Pictures with buttons drawn in, such as the help pages, keep the PlayStation ones. |
+| Font | Original, or Modern: Roboto, or your own .ttf in the `fonts` folder, drawn sharp at the internal resolution; lines rewrap to its letter widths. |
+| Texture replacements | On by default. Off shows every texture as the game has it: no Xbox buttons, no modern font, no texture pack. |
+
 **Developers**
 
 | Option | |
@@ -109,4 +117,7 @@ the main menu): L1 and R1 turn the page.
   looks smoother.
 - Each option also has an environment variable, for testing:
   [DEVELOPMENT.md](DEVELOPMENT.md). For fast-forward: `RG_FAST_FORWARD_SPEED`
-  and `RG_FAST_FORWARD_TRIGGERS`.
+  and `RG_FAST_FORWARD_TRIGGERS`; for text and prompts: `RG_BUTTON_PROMPTS`,
+  `RG_FONT_STYLE`, `RG_FONT`, `RG_TEXTURE_REPLACEMENTS`.
+- Texture packs go in `textures\SCUS-97490\replacements`:
+  [FONT-AND-PROMPTS.md](FONT-AND-PROMPTS.md#texture-replacements).

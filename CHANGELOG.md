@@ -14,6 +14,16 @@
   docs/GRAPHICS-UPSCALING.md.
 - Quick save and quick load were looked into and are not included:
   docs/QUICKSAVE.md says why.
+- Xbox button prompts: the game's text shows A, B, X, Y, LB, RB, LT and RT
+  (by position) instead of the PlayStation buttons; Auto (the default) picks
+  them unless a PlayStation controller plays. The help pages' controller
+  pictures keep the PlayStation buttons.
+- Modern font: the game's text redrawn sharp at the internal resolution in
+  Roboto, or a .ttf of your own in `fonts\`; text rewraps to its widths. Off
+  by default (F1 > Game > Text and prompts).
+- Texture replacements: packs of PNGs in
+  `textures\SCUS-97490\replacements`, named by texture hash
+  (`RG_TEXTURE_LOG=1`); docs/FONT-AND-PROMPTS.md.
 
 ## 0.1.0 (pre-release)
 
