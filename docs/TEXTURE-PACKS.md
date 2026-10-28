@@ -82,8 +82,33 @@ py -3.12 -I -X utf8 tools\rg_texpack.py build --keys keys.csv ^
   with `RG_TEXTURE_LOG=1` and reports how many of the textures the game built
   the pack names, with a list of the misses and why.
 
-Built 2026-10-28: 11,453 files (8,106 primary, 102 fixed, 2,508 + 139 newly
-extracted, 598 menu art), 2.0 s; plus 29 learned.
+Built 2026-10-28 from all four sources (primary set minus the decoder's
+rejects, the fixed set, the menu art, the newly extracted pictures): 11,055
+files (8,106 primary, 102 fixed, 2,509 newly extracted, 338 menu art), in
+2 s; plus 29 learned. The other agents' manifests write the PSM in decimal
+(`psm19` is T8): the builder converts their `gs_key`s to the renderer's hex
+names.
+
+### Validation (2026-10-28)
+
+Logged runs (`RG_TEXTURE_LOG=1`) over the title, the load screen, Salgin's
+streets, the main, item and allies menus: the game built 210 distinct
+texture identities, of which 27 are frame copies and render targets. Of the
+183 indexed textures:
+
+| | |
+|---|---|
+| Named by keys computed from the disc | 119 (65%) |
+| Named by learn mode (from an earlier run of the same route) | 28 (15%) |
+| Matched as a part (UI pages in a larger TEX0) | 6 |
+| Item icon atlas (12 states as icons load) | not replaceable |
+| Text pages (font, names: the modern font) | 7, left out |
+| Pseudo-textures over the frame buffer (one palette, noise) | 7 |
+
+So every disc texture the route showed has its HD picture, apart from the
+icon atlas and the text pages. The keys are exact: of the first 102 textures
+whose texel hash the disc reproduced, 101 also matched the palette hash (the
+other was a palette variant).
 
 ## Completing it by playing (learn mode)
 
@@ -159,7 +184,8 @@ Measured in hidden runs at 2x render scale, Salgin (sand, walls, NPCs),
 | | fps | GS worker busy |
 |---|---|---|
 | No pack | 59.9 | 63-64% |
-| Pack (4x, mipmaps) | 59.8-59.9 | 49-54% |
+| Pack (4x, mipmaps) | 59.8-59.9 | 42-54% |
+| Pack, mipmaps off | 59.9 | 47% |
 | Pack, 64 MB budget (too small) | 59.9 | 40-49% |
 
 The frame rate is capped at 60; the worker's share is the comparable number
