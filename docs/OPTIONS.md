@@ -22,6 +22,7 @@
 - **Sound**: volume and muting.
 - **Controls**: controller and keyboard remapping, dead zones.
 - **Game**: the game options below.
+- **Cheats**: trainer-style helpers behind a master switch, below.
 - **Interface**: the menu's size, notifications, pause and fast-forward
   (its speed: 1.5x, 2x, 3x, 4x, 8x or Max, as fast as the PC goes; and
   whether L2 and R2 control it), the frame-rate counter.
@@ -31,6 +32,7 @@
 | F2 | | Pause |
 | F3 | | Frame-rate counter |
 | F4 | L2 | Fast-forward on or off |
+| F5 | | Cheats master switch ([CHEATS.md](CHEATS.md)) |
 | ` (left of 1), held | R2, held | Fast-forward while held |
 | F6 | | Free camera |
 | F11 or Alt+Enter | | Fullscreen |
@@ -105,6 +107,27 @@ free camera keeps them either way.
 |---|---|
 | Developer tools | What the developers left in the game. In the main menu: R3 shows every item (R1 + R3 as a list, Cross gives one), R1 + Select unlocks every help and info entry, Select fills the bestiary. R2 + Triangle on the Revelation Flow gives the items a cell needs. Triangle + R1 + R2, paused in a scene, skips it (this can break the story's order). |
 
+## Cheats
+
+<p align="center"><img src="images/menu-cheats.jpg" width="70%" alt="The F1 menu's Cheats page"></p>
+
+Settings > Cheats, with a master switch (**F5**, or Game > Cheats) that is off
+at every start. While it is on the game cannot save (a save made with cheated
+numbers is the one that gets corrupted; the save screen says "Save to file 1
+failed." and the card is not touched), and a badge in the picture's corner
+says so. The first time it is turned on a notice asks for a yes
+([CHEATS.md](CHEATS.md): what each does, where it lives, what was verified).
+
+| Option | |
+|---|
+| Infinite HP | The party takes no damage and tops up to full; someone already down stays down. |
+| Infinite AP | AP stays full. |
+| Full action gauge | The party's action gauge stays full. |
+| One-hit kills | Anything that is not a party member goes down to its first hit, bosses included. |
+| Items are not used up | Items used from the bag in the field or in battle stay in it. |
+| Hold the money at an amount | The money is put back to the amount below whenever it differs (0 to 99,999,999). |
+| Money: set to maximum | A button: 99,999,999, once. |
+
 <p align="center">
   <img src="images/salgin-above.jpg" width="49%" alt="Salgin from above">
   <img src="images/dev-items.jpg" width="49%" alt="Developer tools: the list of every item">
@@ -130,7 +153,8 @@ the main menu): L1 and R1 turn the page.
   [DEVELOPMENT.md](DEVELOPMENT.md). For fast-forward: `RG_FAST_FORWARD_SPEED`
   and `RG_FAST_FORWARD_TRIGGERS`; for text and prompts: `RG_BUTTON_PROMPTS`,
   `RG_FONT_STYLE`, `RG_FONT`, `RG_TEXTURE_REPLACEMENTS`; `RG_WIDESCREEN_MENUS`;
-  for HD movies: `RG_HD_MOVIES`.
+  for HD movies: `RG_HD_MOVIES`; for the cheats: `RG_CHEATS` and friends
+  ([CHEATS.md](CHEATS.md#test-method)).
 - ReShade and RenderDoc: set `RG_ALLOW_VK_LAYERS=1` in Windows before
   starting the game ([GRAPHICS-UPSCALING.md](GRAPHICS-UPSCALING.md#reshade-and-renderdoc)).
 - Texture packs go in `textures\SCUS-97490\replacements`:

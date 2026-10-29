@@ -26,6 +26,10 @@ disc image; nothing of the game is distributed.
 - Game options: camera, field of view, draw distance, instant text,
   encounter rate, experience, money, item drops, shop prices and more
   ([all of them](docs/OPTIONS.md))
+- Cheats, behind a master switch (F5) that is off at every start and blocks
+  saving while it is on: infinite HP and AP, a full action gauge, one-hit
+  kills, items that are not used up, money held or maxed
+  ([CHEATS.md](docs/CHEATS.md))
 
 ## Install (Windows)
 
@@ -63,7 +67,7 @@ The game window takes a keyboard or a gamepad (PlayStation layout).
 
 **F1** (or the Guide button, or Back+Start) opens the menu: display, sound,
 controls, and the Game page with the options above. F11 or Alt+Enter
-toggles fullscreen, F12 takes a screenshot. While L2 and R2 run
+toggles fullscreen, F12 takes a screenshot, F5 the cheats master switch. While L2 and R2 run
 fast-forward, the game does not get them (F1 > Interface turns that off;
 the speed is chosen there too, from 1.5x to 8x or Max). The options are also on the
 game's own Settings screen (System > Settings, L1 and R1 to turn the page).
@@ -75,6 +79,8 @@ See [docs/OPTIONS.md](docs/OPTIONS.md) for each one.
 
 - [CHANGELOG.md](CHANGELOG.md): what each release brings, and its known issues
 - [docs/OPTIONS.md](docs/OPTIONS.md): the menu and every game option
+- [docs/CHEATS.md](docs/CHEATS.md): the cheats: what each does, where it lives
+  in the game, what was verified, and why saving is blocked while they are on
 - [docs/FONT-AND-PROMPTS.md](docs/FONT-AND-PROMPTS.md): button prompts, the
   modern font, texture replacement packs
 - [docs/TEXTURE-PACKS.md](docs/TEXTURE-PACKS.md): HD texture packs: building,

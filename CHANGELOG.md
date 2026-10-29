@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- Cheats: F1 > Settings > Cheats, behind a master switch (F5, Game > Cheats)
+  that is off at every start, whatever settings.ini says. Infinite HP, infinite
+  AP, a full action gauge, one-hit kills, items that are not used up, the
+  money held at an amount or set to the maximum; each a native hook or a
+  per-frame write found in the game's code and checked in the running game
+  (docs/CHEATS.md lists what and where, and what was left out as unverified:
+  setting levels, weapon charge). A notice asks for a yes the first time. While
+  the master switch is on the game cannot save (the save screen says "Save to
+  file N failed." and the memory card is not touched), and a "CHEATS ON"
+  badge shows in the picture.
+
 - HD movies: the cutscenes can play from upscaled 1080p files (HEVC in
   Matroska, one per movie, built from your disc: docs/HD-MOVIES.md). The game
   keeps playing its own movie, with its sound, clock, subtitles, pause and
