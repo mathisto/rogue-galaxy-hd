@@ -5,6 +5,7 @@
 #include "ui/ui_overlay.h"
 
 #include <SDL3/SDL.h>
+#include <imgui.h>
 
 #include <algorithm>
 #include <cstdio>
@@ -14,6 +15,8 @@
 
 namespace dq8::ui {
 extern std::string g_scrollToGameOption; // ui_pages.cpp
+extern float g_scrollPageTo;
+extern float g_scrollPageInfo[2];
 namespace {
 std::string joined(const std::vector<std::string> &words) {
     std::string text;
@@ -113,6 +116,13 @@ void Overlay::runStep(const ScriptStep &step, uint64_t frame) {
         showMenu(joined(step.arguments).c_str());
     } else if (command == "scrollto") {
         g_scrollToGameOption = first;
+    } else if (command == "scrollpage") {
+        // "scrollpage 400" or "scrollpage end": the open page, by pixels.
+        g_scrollPageTo = first == "end" ? 1.0e9f : static_cast<float>(std::atof(first.c_str()));
+    } else if (command == "pageinfo") {
+        std::fprintf(stderr, "[ui] page %d: scroll range %.0f px, visible %.0f px, window %.0fx%.0f\n",
+                     static_cast<int>(m_page), g_scrollPageInfo[0], g_scrollPageInfo[1],
+                     ImGui::GetIO().DisplaySize.x, ImGui::GetIO().DisplaySize.y);
     } else if (command == "cheatsnotice") {
         // The cheats' first-time notice, answered (Rogue Galaxy: added):
         // "accept", or "decline".

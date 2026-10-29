@@ -108,6 +108,12 @@ std::string conflictWith(const gfx::PadConfig &config, PadInput input, bool keyb
 }
 } // namespace
 
+// RG_UI_SCRIPT's "scrollpage N|end": the open page scrolls to N pixels (or
+// its end) once, for screenshots of what is below the fold (Rogue Galaxy:
+// added). g_scrollPageInfo reports the scroll range the page last had.
+float g_scrollPageTo = -1.0f;
+float g_scrollPageInfo[2] = {0.0f, 0.0f}; // scroll range, visible height
+
 void Overlay::drawSettingsWindow() {
     const ImGuiViewport *viewport = ImGui::GetMainViewport();
     const ImVec2 area = viewport->WorkSize;
@@ -164,6 +170,12 @@ void Overlay::drawSettingsWindow() {
         ImGui::Unindent(em(0.1f));
         ImGui::PopItemWidth();
         ImGui::Dummy(ImVec2(0.0f, em(0.5f)));
+        g_scrollPageInfo[0] = ImGui::GetScrollMaxY();
+        g_scrollPageInfo[1] = ImGui::GetWindowHeight();
+        if (g_scrollPageTo >= 0.0f) {
+            ImGui::SetScrollY(g_scrollPageTo > 1.0e6f ? ImGui::GetScrollMaxY() : g_scrollPageTo);
+            g_scrollPageTo = -1.0f;
+        }
         ImGui::EndChild();
 
         // L1 and R1 turn the pages, as in the game's own menus.
