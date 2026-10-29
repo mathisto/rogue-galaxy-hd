@@ -31,6 +31,7 @@
 #include "libc_rand.h"
 #include "loading_screen.h"
 #include "battle_rates.h"
+#include "cheats.h"
 #include "camera_view.h"
 #include "dev_tools.h"
 #include "draw_distance.h"
@@ -172,6 +173,7 @@ int run(int argc, char **argv)
     rg::cameraview::install(runtime);
     rg::drawdistance::install(runtime);
     rg::battlerates::install(runtime);
+    rg::cheats::install(runtime);
     rg::shopprices::install(runtime);
     rg::instanttext::install(runtime);
     rg::mapchests::install(runtime);

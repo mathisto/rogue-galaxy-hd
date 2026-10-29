@@ -35,7 +35,7 @@ bool reservedKey(SDL_Scancode scancode) {
     // The grave accent (`, left of 1) holds fast-forward (Rogue Galaxy:
     // added).
     return scancode == SDL_SCANCODE_F1 || scancode == SDL_SCANCODE_F2 || scancode == SDL_SCANCODE_F3 ||
-           scancode == SDL_SCANCODE_F4 || scancode == SDL_SCANCODE_F6 || scancode == SDL_SCANCODE_F8 || scancode == SDL_SCANCODE_F11 ||
+           scancode == SDL_SCANCODE_F4 || scancode == SDL_SCANCODE_F5 || scancode == SDL_SCANCODE_F6 || scancode == SDL_SCANCODE_F8 || scancode == SDL_SCANCODE_F11 ||
            scancode == SDL_SCANCODE_F12 || scancode == SDL_SCANCODE_GRAVE;
 }
 
@@ -185,7 +185,7 @@ int Overlay::gameNumber(const GameOption &option) const {
     return std::clamp(value, option.minimum, option.maximum);
 }
 
-bool Overlay::capturesInput() const { return m_menuOpen || m_capture.active; }
+bool Overlay::capturesInput() const { return m_menuOpen || m_capture.active || m_cheatNoticeOpen; }
 
 bool Overlay::wantsFrames() {
     if (!m_context)
@@ -193,7 +193,8 @@ bool Overlay::wantsFrames() {
     // Queued input has to be consumed by a frame, or it replays later.
     const bool scriptWaiting = std::any_of(m_script.begin(), m_script.end(),
                                            [](const ScriptStep &step) { return !step.done && step.seconds >= 0.0; });
-    return m_menuOpen || m_capture.active || !m_toasts.empty() || m_settings.showFps || m_statsOpen ||
+    return m_menuOpen || m_capture.active || m_cheatNoticeOpen || !m_toasts.empty() || m_settings.showFps || m_statsOpen ||
+           (m_host.cheatsStatus && m_host.cheatsStatus() > 0) ||
            pausing() || scriptWaiting || !m_context->InputEventsQueue.empty();
 }
 
@@ -372,7 +373,7 @@ bool Overlay::handleEvent(const SDL_Event &event) {
     case SDL_EVENT_KEY_DOWN:
         if (!event.key.repeat && hotkey(event.key))
             return true;
-        if (event.key.scancode == SDL_SCANCODE_ESCAPE && m_menuOpen && backOut())
+        if (event.key.scancode == SDL_SCANCODE_ESCAPE && (m_menuOpen || m_cheatNoticeOpen) && backOut())
             return true;
         break;
     case SDL_EVENT_KEY_UP:
@@ -385,7 +386,7 @@ bool Overlay::handleEvent(const SDL_Event &event) {
     case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
         if (gamepadShortcut(event.gbutton))
             return true;
-        if (event.gbutton.button == SDL_GAMEPAD_BUTTON_EAST && m_menuOpen && backOut())
+        if (event.gbutton.button == SDL_GAMEPAD_BUTTON_EAST && (m_menuOpen || m_cheatNoticeOpen) && backOut())
             return true;
         break;
     default:
@@ -412,6 +413,9 @@ bool Overlay::hotkey(const SDL_KeyboardEvent &key) {
             return false;
         setFastForward(!m_fastForward);
         return true;
+    case SDL_SCANCODE_F5:
+        // The cheats' master switch (Rogue Galaxy: added).
+        return toggleCheatsMaster();
     case SDL_SCANCODE_GRAVE:
         // Held, fast-forward (Rogue Galaxy: added); its key up ends it.
         if (!canChangeSpeed())
@@ -506,7 +510,9 @@ bool Overlay::captureEvent(const SDL_Event &event) {
 bool Overlay::backOut() {
     if (ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel))
         return false;
-    if (m_aboutOpen)
+    if (m_cheatNoticeOpen)
+        m_cheatNoticeOpen = false;
+    else if (m_aboutOpen)
         m_aboutOpen = false;
     else if (m_shortcutsOpen)
         m_shortcutsOpen = false;
@@ -615,6 +621,9 @@ void Overlay::drawFrame() {
     drawCapturePrompt();
     drawFps();
     drawSpeedBadge();
+    if (m_cheatNoticeOpen)
+        drawCheatNotice();
+    drawCheatBadge();
     drawPauseBanner();
     drawToasts();
     updateCursor();
@@ -675,7 +684,9 @@ void Overlay::drawMenuBar() {
                     ImGui::EndMenu();
                 }
             }
-            if (canPause() || canChangeSpeed())
+            if (m_host.cheatsStatus && menuItem("Cheats", "F5", m_host.cheatsStatus() > 0))
+                toggleCheatsMaster();
+            if (canPause() || canChangeSpeed() || m_host.cheatsStatus)
                 ImGui::Separator();
             if (menuItem("Mute sound", nullptr, m_settings.muted)) {
                 m_settings.muted = !m_settings.muted;
@@ -695,7 +706,7 @@ void Overlay::drawMenuBar() {
             ImGui::EndMenu();
         }
         if (beginMenu("Settings")) {
-            static constexpr const char *kPages[] = {"Display", "Sound", "Controls", "Game", "Interface"};
+            static constexpr const char *kPages[] = {"Display", "Sound", "Controls", "Game", "Cheats", "Interface"};
             for (int page = 0; page < static_cast<int>(SettingsPage::Count); ++page)
                 if (menuItem(kPages[page], nullptr, m_settingsOpen && m_page == static_cast<SettingsPage>(page)))
                     openSettings(static_cast<SettingsPage>(page));

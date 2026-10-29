@@ -19,8 +19,11 @@ namespace {
 using gfx::PadInput;
 
 constexpr const char *kTimes = "\xC3\x97"; // U+00D7, spelled out for compilers without /utf-8
-constexpr const char *kPageNames[] = {"Display", "Sound", "Controls", "Game", "Interface"};
-constexpr Icon kPageIcons[] = {Icon::Display, Icon::Sound, Icon::Controls, Icon::Disc, Icon::Interface};
+constexpr const char *kPageNames[] = {"Display", "Sound", "Controls", "Game", "Cheats", "Interface"};
+constexpr Icon kPageIcons[] = {Icon::Display, Icon::Sound, Icon::Controls, Icon::Disc, Icon::Wrench, Icon::Interface};
+
+// The Cheats page's options, in the host's list with the Game page's (Rogue Galaxy: added).
+bool isCheatKey(const std::string &key) { return key.rfind("cheat", 0) == 0; }
 constexpr const char *kProjectUrl = "https://github.com/victor-takai/rogue-galaxy-recomp";
 constexpr const char *kIssuesUrl = "https://github.com/victor-takai/rogue-galaxy-recomp/issues";
 
@@ -154,6 +157,7 @@ void Overlay::drawSettingsWindow() {
         case SettingsPage::Sound: drawSoundPage(); break;
         case SettingsPage::Controls: drawControlsPage(); break;
         case SettingsPage::Game: drawGamePage(); break;
+        case SettingsPage::Cheats: drawCheatsPage(); break;
         case SettingsPage::Interface: drawInterfacePage(); break;
         case SettingsPage::Count: break;
         }
@@ -452,13 +456,18 @@ void Overlay::drawInterfacePage() {
 // for screenshots of options below the fold (Rogue Galaxy: added).
 std::string g_scrollToGameOption;
 
-void Overlay::drawGamePage() {
+void Overlay::drawGamePage() { drawGameOptions(false); }
+
+void Overlay::drawGameOptions(bool cheats) {
     if (m_host.gameOptions.empty()) {
         mutedText("The game has no options of its own.");
         return;
     }
+    const bool masterOn = m_host.cheatsStatus && m_host.cheatsStatus() > 0;
     bool started = false, table = false;
     for (const GameOption &option : m_host.gameOptions) {
+        if (isCheatKey(option.key) != cheats)
+            continue;
         const auto section = std::find_if(m_host.gameSections.begin(), m_host.gameSections.end(),
                                           [&](const auto &entry) { return entry.first == option.key; });
         if (!started || section != m_host.gameSections.end()) {
@@ -525,10 +534,24 @@ void Overlay::drawGamePage() {
             }
             continue;
         }
+        if (option.action) {
+            // A one-shot: only with the master switch on.
+            ImGui::BeginDisabled(!masterOn);
+            ImGui::PushID(option.key.c_str());
+            if (ImGui::Button(option.format.empty() ? "Apply" : option.format.c_str()) && m_host.setGameOption)
+                m_host.setGameOption(option.key, true);
+            ImGui::PopID();
+            ImGui::EndDisabled();
+            continue;
+        }
         bool on = gameOption(option);
         if (!option.remembered) {
-            if (toggle(option.key.c_str(), &on) && m_host.setGameOption)
-                m_host.setGameOption(option.key, on);
+            if (toggle(option.key.c_str(), &on)) {
+                if (option.key == "cheats_master")
+                    requestCheatsMaster(on);
+                else if (m_host.setGameOption)
+                    m_host.setGameOption(option.key, on);
+            }
             continue;
         }
         if (toggle(option.key.c_str(), &on)) {
@@ -823,7 +846,7 @@ void Overlay::drawShortcuts() {
             ImGui::TableSetupColumn("what", ImGuiTableColumnFlags_WidthFixed, em(15.0f));
             static constexpr const char *kF1[] = {"F1"}, *kF2[] = {"F2"}, *kF3[] = {"F3"}, *kF4[] = {"F4"},
                                         *kF11[] = {"F11"}, *kAltEnter[] = {"Alt", "Enter"}, *kF12[] = {"F12"},
-                                        *kShiftF12[] = {"Shift", "F12"}, *kEsc[] = {"Esc"};
+                                        *kShiftF12[] = {"Shift", "F12"}, *kEsc[] = {"Esc"}, *kF5[] = {"F5"};
             static constexpr const char *kGrave[] = {"`"};
             shortcutRow(kF1, 1, "Open or close this menu");
             if (canPause())
@@ -833,6 +856,8 @@ void Overlay::drawShortcuts() {
                 shortcutRow(kF4, 1, "Fast-forward");
             if (canChangeSpeed())
                 shortcutRow(kGrave, 1, "Fast-forward while held");
+            if (m_host.cheatsStatus)
+                shortcutRow(kF5, 1, "Cheats on or off (the master switch)");
             shortcutRow(kF11, 1, "Fullscreen");
             shortcutRow(kAltEnter, 2, "Fullscreen");
             shortcutRow(kF12, 1, "Screenshot of the game");
@@ -925,6 +950,123 @@ void Overlay::drawStats() {
             row("Alpha fail modes", m_stats.alphaFailModes);
             ImGui::EndTable();
         }
+    }
+    ImGui::End();
+    ImGui::PopStyleVar();
+}
+
+// ---------------------------------------------------------------------------
+// Cheats (Rogue Galaxy: added). The page lists the options whose key starts
+// with "cheat" (src/graphics.cpp declares them); the master switch is off at
+// every start, and the first time it is turned on a notice asks for a yes.
+// ---------------------------------------------------------------------------
+
+void Overlay::drawCheatsPage() {
+    const int status = m_host.cheatsStatus ? m_host.cheatsStatus() : 0;
+    ImGui::PushTextWrapPos(0.0f);
+    mutedText("%s", "Trainer-style helpers for playing around. They change the game's numbers while it runs, "
+                    "so they act only while the master switch is on. The master switch is off at every start, "
+                    "and while it is on the game cannot save: a save made with cheats in it is the one that "
+                    "gets corrupted.");
+    ImGui::PopTextWrapPos();
+    ImGui::Dummy(ImVec2(0.0f, em(0.3f)));
+    if (status > 0) {
+        icon(Icon::Warning, em(1.0f), palette::kWarn);
+        ImGui::SameLine(0.0f, em(0.5f));
+        ImGui::TextColored(color(palette::kWarn), "Cheats are on: saving is blocked until the master switch is off (F5).");
+    }
+    drawGameOptions(true);
+    ImGui::Dummy(ImVec2(0.0f, em(0.4f)));
+    ImGui::PushTextWrapPos(0.0f);
+    mutedText("%s", "Experience, money and drop rates have their own options on the Game page, and Developer "
+                    "tools there gives items.");
+    ImGui::PopTextWrapPos();
+}
+
+bool Overlay::toggleCheatsMaster() {
+    if (!m_host.cheatsStatus || !m_host.setGameOption)
+        return false;
+    requestCheatsMaster(m_host.cheatsStatus() == 0);
+    return true;
+}
+
+void Overlay::requestCheatsMaster(bool on) {
+    if (!m_host.setGameOption)
+        return;
+    if (on) {
+        const auto seen = m_settings.gameOptions.find("cheats_notice_seen");
+        if (seen == m_settings.gameOptions.end() || !seen->second) {
+            // The first time: the notice, which turns them on when accepted.
+            m_cheatNoticeOpen = true;
+            m_focusSettings = true;
+            return;
+        }
+    }
+    m_host.setGameOption("cheats_master", on);
+    notify(on ? "Cheats on: saving is blocked until you turn them off (F5)" : "Cheats off: saving works again",
+           on ? Icon::Warning : Icon::Info, 4.0);
+}
+
+void Overlay::drawCheatNotice() {
+    centerNextWindow();
+    ImGui::SetNextWindowSize(ImVec2(std::min(ImGui::GetMainViewport()->WorkSize.x - em(2.0f), em(32.0f)), 0.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(em(1.4f), em(1.2f)));
+    if (beginWindow("##cheatnotice", nullptr, kDialogFlags & ~ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::SetWindowFocus();
+        dialogHeader(Icon::Warning, "Turn cheats on?", nullptr);
+        ImGui::Dummy(ImVec2(0.0f, em(0.3f)));
+        ImGui::PushTextWrapPos(0.0f);
+        ImGui::TextUnformatted("Cheats change the game's numbers while it runs: health, AP, money, damage. "
+                               "They can make the story trivial, and one-hit kills can end a fight the story "
+                               "meant you to see through.");
+        ImGui::Dummy(ImVec2(0.0f, em(0.3f)));
+        ImGui::TextUnformatted("To keep your saves safe the game cannot save while cheats are on: saving fails "
+                               "with the game's own error message. Turn the master switch off "
+                               "(Settings > Cheats, or F5) before you save.");
+        ImGui::Dummy(ImVec2(0.0f, em(0.3f)));
+        mutedText("%s", "This notice is shown once. The master switch is off every time the game starts.");
+        ImGui::PopTextWrapPos();
+        ImGui::Dummy(ImVec2(0.0f, em(0.5f)));
+        if (iconButton("Turn cheats on", Icon::Check, true)) {
+            m_settings.gameOptions["cheats_notice_seen"] = true;
+            markDirty();
+            saveIfDirty(true);
+            m_cheatNoticeOpen = false;
+            requestCheatsMaster(true);
+        }
+        ImGui::SameLine();
+        if (iconButton("Not now", Icon::Close))
+            m_cheatNoticeOpen = false;
+    }
+    ImGui::End();
+    ImGui::PopStyleVar();
+}
+
+// "CHEATS ON", in a corner of the picture, as long as the master is on.
+void Overlay::drawCheatBadge() {
+    const int status = m_host.cheatsStatus ? m_host.cheatsStatus() : 0;
+    if (m_host.cheatsRefusals) {
+        const unsigned refusals = m_host.cheatsRefusals();
+        if (refusals != m_refusalsSeen) {
+            m_refusalsSeen = refusals;
+            notify("Cheats are on, so the game was not saved. Turn them off (F5) to save.", Icon::Warning, 6.0);
+        }
+    }
+    if (status <= 0)
+        return;
+    ImVec2 min, max;
+    pictureBounds(min, max);
+    const float margin = em(0.6f);
+    ImGui::SetNextWindowPos(ImVec2(min.x + margin, max.y - margin), ImGuiCond_Always, ImVec2(0.0f, 1.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(em(0.7f), em(0.35f)));
+    const ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoInputs |
+                                   ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoFocusOnAppearing |
+                                   ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings;
+    if (beginWindow("##cheatbadge", nullptr, flags)) {
+        ImGui::BringWindowToDisplayFront(ImGui::GetCurrentWindow());
+        icon(Icon::Warning, em(1.0f), palette::kWarn);
+        ImGui::SameLine(0.0f, em(0.45f));
+        ImGui::TextUnformatted(status > 1 ? "CHEATS ON  -  saving blocked" : "Cheats master on  -  saving blocked");
     }
     ImGui::End();
     ImGui::PopStyleVar();

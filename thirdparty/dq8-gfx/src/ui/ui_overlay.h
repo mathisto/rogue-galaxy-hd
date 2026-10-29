@@ -61,6 +61,9 @@ struct GameOption {
     // instead of a slider: the value is minimum + the index (Rogue Galaxy:
     // added).
     std::vector<std::string> choices = {};
+    // A button instead of a switch (Rogue Galaxy: added): pressing it calls
+    // HostServices::setGameOption(key, true) once; `format` is its label.
+    bool action = false;
     bool number() const { return maximum > minimum; }
 };
 
@@ -90,10 +93,16 @@ struct HostServices {
     std::function<void(const std::string &key, bool on)> setGameOption;
     std::function<void(const std::string &key, int value)> setGameNumber;
     std::function<bool(const std::string &key)> gameOptionState;
+    // Cheats (Rogue Galaxy: added): the options whose key starts with
+    // "cheat" make the Cheats page, "cheats_master" being its master switch.
+    // The status is 0 for none, 1 for the master on, 2 for the master on
+    // with a cheat in use; refusals counts the saves the host turned down.
+    std::function<int()> cheatsStatus;
+    std::function<unsigned()> cheatsRefusals;
 };
 
 // Game: Rogue Galaxy's own switches (added).
-enum class SettingsPage : uint8_t { Display, Sound, Controls, Game, Interface, Count };
+enum class SettingsPage : uint8_t { Display, Sound, Controls, Game, Cheats, Interface, Count };
 
 class Overlay final : public gfx::SdlGpuOverlay {
 public:
@@ -196,6 +205,13 @@ private:
     void drawControlsPage();
     void drawBindingTable(bool keyboard);
     void drawGamePage();
+    void drawGameOptions(bool cheats);
+    void drawCheatsPage();
+    void drawCheatNotice();
+    void drawCheatBadge();
+    // F5, or the page's switch: the master, with the one-time notice first.
+    bool toggleCheatsMaster();
+    void requestCheatsMaster(bool on);
     void drawInterfacePage();
     void drawCapturePrompt();
     void drawAbout();
@@ -312,6 +328,9 @@ private:
     double m_dirtyAt = 0.0;
 
     bool m_closePopups = false;
+    bool m_cheatNoticeOpen = false;
+    unsigned m_refusalsSeen = 0u;
+    double m_refusalToastAt = -100.0;
     std::vector<ScriptStep> m_script;
     double m_scriptStart = 0.0;
 

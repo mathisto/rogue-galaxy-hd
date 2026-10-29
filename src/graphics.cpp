@@ -17,6 +17,7 @@
 #include "flip_pacing.h"
 #include "battle_rates.h"
 #include "camera_view.h"
+#include "cheats.h"
 #include "dev_tools.h"
 #include "draw_distance.h"
 #include "free_camera.h"
@@ -121,7 +122,21 @@ void followQuickScenes()
 void applyGameOption(const std::string &key, bool on)
 {
     rg::settingspages::noteOption(key, on);
-    if (key == "sixty_fps")
+    if (key == "cheats_master")
+        rg::cheats::setMaster(on);
+    else if (key.rfind("cheat_", 0) == 0)
+    {
+        // The Cheats page: switches, and buttons that call with true once.
+        const std::string name = key.substr(6);
+        if (name == "max_money")
+        {
+            if (on)
+                rg::cheats::fire(name);
+        }
+        else
+            rg::cheats::setSwitch(name, on);
+    }
+    else if (key == "sixty_fps")
         rg::timing::setSixtyFpsPreferred(on);
     else if (key == "widescreen")
         rg::widescreen::setEnabled(on);
@@ -154,7 +169,9 @@ void applyGameOption(const std::string &key, bool on)
 void applyGameNumber(const std::string &key, int value)
 {
     rg::settingspages::noteNumber(key, value);
-    if (key == "field_of_view")
+    if (key == "cheat_money")
+        rg::cheats::setNumber("money", value);
+    else if (key == "field_of_view")
         rg::cameraview::setFieldOfView(value);
     else if (key == "camera_distance")
         rg::cameraview::setDistance(value);
@@ -643,6 +660,33 @@ std::unique_ptr<dq8::ui::Overlay> createMenu(PS2Runtime &runtime, dq8::gfx::SdlG
          "item the picked cell asks for. Paused in a scene: Triangle + R1 + R2 ends it, also one the game would "
          "not let you skip, which can leave the story out of order.",
          false},
+        // The Cheats page (docs/CHEATS.md): the master is off at every start
+        // (not remembered), the rest are remembered but act only with it on.
+        {"cheats_master", "Cheats (master switch, F5)",
+         "Turns the cheats below on or off. Off at every start. While it is on the game cannot save, so a "
+         "save with cheated numbers in it cannot happen; the first time, a notice asks for a yes.",
+         false, 0, 0, 0, "", 1, false},
+        {"cheat_hp", "Infinite HP",
+         "The party takes no damage: HP never goes down, and tops up to full. A character who is already down "
+         "stays down.",
+         false},
+        {"cheat_ap", "Infinite AP", "AP stays full, so abilities cost nothing.", false},
+        {"cheat_gauge", "Full action gauge",
+         "The party's action gauge stays full, so every action is ready at once.", false},
+        {"cheat_onehit", "One-hit kills",
+         "Anything that is not a party member goes down to its first hit, bosses included.", false},
+        {"cheat_items", "Items are not used up",
+         "An item used from the bag in the field or in battle stays in the bag. Selling, discarding, combining "
+         "and the Revelation Flow still use items up.",
+         false},
+        {"cheat_money_hold", "Hold the money at an amount",
+         "The party's money is put back to the amount below whenever it differs, so spending costs nothing and "
+         "earning adds nothing.",
+         false},
+        {"cheat_money", "Amount to hold", "The money held, up to the game's 99,999,999.", false, 0, 99999999,
+         99999999, "%d", 1000000},
+        {"cheat_max_money", "Money", "Sets the party's money to the game's maximum, 99,999,999, once.", false, 0, 0,
+         0, "Set to maximum", 1, false, false, {}, true},
     };
     host.gameSections = {
         {"sixty_fps", "Camera and view"},
@@ -650,6 +694,9 @@ std::unique_ptr<dq8::ui::Overlay> createMenu(PS2Runtime &runtime, dq8::gfx::SdlG
         {"encounter_rate", "Battles and rewards"},
         {"button_prompts", "Text and prompts"},
         {"dev_tools", "Developers"},
+        {"cheats_master", "Master switch"},
+        {"cheat_hp", "Battle"},
+        {"cheat_items", "Items and money"},
     };
     // The game's own Settings screen shows them on pages of its own.
     for (const dq8::ui::GameOption &option : host.gameOptions)
@@ -663,7 +710,11 @@ std::unique_ptr<dq8::ui::Overlay> createMenu(PS2Runtime &runtime, dq8::gfx::SdlG
     // And Display > Borders: Black, Blurred, Image.
     rg::settingspages::setRange("sides", 0, 2, 1, 0);
     host.setGameOption = &applyGameOption;
-    host.gameOptionState = [](const std::string &key) { return key == "free_camera" && rg::freecamera::enabled(); };
+    host.gameOptionState = [](const std::string &key) {
+        return (key == "free_camera" && rg::freecamera::enabled()) || (key == "cheats_master" && rg::cheats::master());
+    };
+    host.cheatsStatus = [] { return rg::cheats::master() ? (rg::cheats::active() ? 2 : 1) : 0; };
+    host.cheatsRefusals = [] { return rg::cheats::refusedSaves(); };
     host.setGameNumber = &applyGameNumber;
     auto menu = std::make_unique<dq8::ui::Overlay>(backend, std::move(settings), settingsPath, std::move(host));
     std::string error;

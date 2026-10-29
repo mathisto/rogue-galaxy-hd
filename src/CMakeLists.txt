@@ -69,6 +69,7 @@ add_executable(roguegalaxy
     main.cpp
     graphics.cpp
     battle_rates.cpp
+    cheats.cpp
     camera_view.cpp
     depth_reads.cpp
     dev_tools.cpp
