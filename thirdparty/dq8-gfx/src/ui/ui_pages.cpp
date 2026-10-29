@@ -12,6 +12,7 @@
 #include <cfloat>
 #include <cmath>
 #include <cstdio>
+#include <initializer_list>
 #include <string>
 
 namespace dq8::ui {
@@ -19,8 +20,7 @@ namespace {
 using gfx::PadInput;
 
 constexpr const char *kTimes = "\xC3\x97"; // U+00D7, spelled out for compilers without /utf-8
-constexpr const char *kPageNames[] = {"Display", "Sound", "Controls", "Game", "Cheats", "Interface"};
-constexpr Icon kPageIcons[] = {Icon::Display, Icon::Sound, Icon::Controls, Icon::Disc, Icon::Wrench, Icon::Interface};
+constexpr Icon kPageIcons[] = {Icon::Display, Icon::Sound, Icon::Controls, Icon::Disc, Icon::Interface, Icon::Wrench};
 
 // The Cheats page's options, in the host's list with the Game page's (Rogue Galaxy: added).
 bool isCheatKey(const std::string &key) { return key.rfind("cheat", 0) == 0; }
@@ -75,18 +75,32 @@ void centerNextWindow() {
                             ImGuiCond_Always, ImVec2(0.5f, 0.5f));
 }
 
-// `joiner` sits between the keys: "+" for a chord, "/" for either of them.
-void shortcutRow(const char *const *keys, int count, const char *what, const char *joiner = "+") {
+// Alternatives are separated by `joiner` ("or", or "/"); the keys of one
+// alternative are a chord, joined by "+".
+using KeyChord = std::initializer_list<const char *>;
+void shortcutAlternatives(std::initializer_list<KeyChord> alternatives, const char *what, const char *joiner = "or") {
     ImGui::TableNextRow();
     ImGui::TableNextColumn();
-    for (int key = 0; key < count; ++key) {
-        if (key != 0) {
+    bool firstAlternative = true;
+    for (const KeyChord &chord : alternatives) {
+        if (!firstAlternative) {
             ImGui::SameLine(0.0f, em(0.3f));
             ImGui::AlignTextToFramePadding();
             mutedText("%s", joiner);
             ImGui::SameLine(0.0f, em(0.3f));
         }
-        keycap(keys[key]);
+        firstAlternative = false;
+        bool firstKey = true;
+        for (const char *key : chord) {
+            if (!firstKey) {
+                ImGui::SameLine(0.0f, em(0.3f));
+                ImGui::AlignTextToFramePadding();
+                mutedText("+");
+                ImGui::SameLine(0.0f, em(0.3f));
+            }
+            firstKey = false;
+            keycap(key);
+        }
     }
     ImGui::TableNextColumn();
     ImGui::AlignTextToFramePadding();
@@ -113,11 +127,66 @@ std::string conflictWith(const gfx::PadConfig &config, PadInput input, bool keyb
 // added). g_scrollPageInfo reports the scroll range the page last had.
 float g_scrollPageTo = -1.0f;
 float g_scrollPageInfo[2] = {0.0f, 0.0f}; // scroll range, visible height
+// "unfold on": every folded section shows its settings, for screenshots.
+bool g_unfoldAll = false;
+
+namespace {
+// What "default" means on each page: a fresh Settings.
+const Settings &defaults() {
+    static const Settings fresh;
+    return fresh;
+}
+
+// A two-step button for the page's "restore defaults": the first press asks,
+// a second within four seconds does it. The id stays put while the label
+// changes, so a focused button keeps its focus.
+bool restoreButton(const char *label) {
+    static ImGuiID armedId = 0;
+    static double armedAt = -100.0;
+    const ImGuiID id = ImGui::GetID("##restore");
+    const bool armed = armedId == id && ImGui::GetTime() - armedAt < 4.0;
+    if (armed)
+        ImGui::PushStyleColor(ImGuiCol_Button, color(withAlpha(palette::kWarn, 0.35f)));
+    const std::string text = armed ? "Press again to restore" : label;
+    const bool pressed = ImGui::Button((text + "###restore").c_str());
+    if (armed)
+        ImGui::PopStyleColor();
+    if (!pressed)
+        return false;
+    if (armed) {
+        armedId = 0;
+        return true;
+    }
+    armedId = id;
+    armedAt = ImGui::GetTime();
+    return false;
+}
+
+// The foot of a page: restore its defaults, and what the gold dots mean.
+bool pageFooter(const char *restoreLabel) {
+    ImGui::Dummy(ImVec2(0.0f, em(0.5f)));
+    const ImVec2 at = ImGui::GetCursorScreenPos();
+    ImGui::GetWindowDrawList()->AddLine(at, ImVec2(at.x + ImGui::GetContentRegionAvail().x, at.y),
+                                        IM_COL32(255, 255, 255, 34), 1.0f);
+    ImGui::Dummy(ImVec2(0.0f, em(0.5f)));
+    const bool done = restoreButton(restoreLabel);
+    ImGui::SameLine(0.0f, em(0.9f));
+    ImGui::AlignTextToFramePadding();
+    const ImVec2 dot = ImGui::GetCursorScreenPos();
+    ImGui::GetWindowDrawList()->AddCircleFilled(ImVec2(dot.x + em(0.2f), dot.y + ImGui::GetFrameHeight() * 0.5f),
+                                                em(0.17f), palette::kGold);
+    ImGui::Dummy(ImVec2(em(0.6f), ImGui::GetFrameHeight()));
+    ImGui::SameLine(0.0f, 0.0f);
+    ImGui::AlignTextToFramePadding();
+    mutedText("changed from the default");
+    return done;
+}
+} // namespace
 
 void Overlay::drawSettingsWindow() {
     const ImGuiViewport *viewport = ImGui::GetMainViewport();
     const ImVec2 area = viewport->WorkSize;
-    const ImVec2 size(std::min(area.x - em(2.0f), em(54.0f)), std::min(area.y - em(2.0f), em(37.0f)));
+    const ImVec2 size(std::min(area.x - em(2.0f), em(54.0f)), std::min(area.y - em(2.0f), em(46.0f)));
     centerNextWindow();
     ImGui::SetNextWindowSize(size, ImGuiCond_Always);
     if (m_focusSettings) {
@@ -132,15 +201,22 @@ void Overlay::drawSettingsWindow() {
     if (beginWindow("Settings##dq8", nullptr, flags)) {
         dialogHeader(Icon::Gear, "Settings", &m_settingsOpen);
 
-        const float navWidth = em(12.5f);
-        ImGui::BeginChild("##nav", ImVec2(navWidth, 0.0f), ImGuiChildFlags_None, ImGuiWindowFlags_NoScrollbar);
+        // A narrow window shows the page list as icons, so the page keeps its room.
+        const bool compact = size.x < em(44.0f);
+        const float navWidth = compact ? em(3.4f) : em(11.0f);
+        // NavFlattened: the d-pad crosses from the page list into the page and back.
+        ImGui::BeginChild("##nav", ImVec2(navWidth, 0.0f), ImGuiChildFlags_NavFlattened, ImGuiWindowFlags_NoScrollbar);
+        if (compact)
+            ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(ImGui::GetStyle().ItemSpacing.x, em(0.2f)));
         for (int page = 0; page < static_cast<int>(SettingsPage::Count); ++page)
-            if (navItem(kPageNames[page], kPageIcons[page], m_page == static_cast<SettingsPage>(page)))
+            if (navItem(kSettingsPageNames[page], kPageIcons[page], m_page == static_cast<SettingsPage>(page), compact))
                 m_page = static_cast<SettingsPage>(page);
+        if (compact)
+            ImGui::PopStyleVar();
         const float footer = ImGui::GetTextLineHeightWithSpacing() * 2.0f;
-        if (ImGui::GetContentRegionAvail().y > footer) {
+        if (!compact && ImGui::GetContentRegionAvail().y > footer) {
             ImGui::SetCursorPosY(ImGui::GetWindowHeight() - footer);
-            ImGui::PushFont(nullptr, ImGui::GetStyle().FontSizeBase * 0.84f);
+            pushScaledFont(0.84f);
             mutedText("Rogue Galaxy Recompiled %s", m_host.version.c_str());
             mutedText("Changes save automatically");
             ImGui::PopFont();
@@ -153,7 +229,7 @@ void Overlay::drawSettingsWindow() {
                                             IM_COL32(255, 255, 255, 34), 1.0f);
         ImGui::SetCursorScreenPos(ImVec2(rule.x + em(0.9f), rule.y));
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
-        ImGui::BeginChild("##page", ImVec2(0.0f, 0.0f), ImGuiChildFlags_None);
+        ImGui::BeginChild("##page", ImVec2(0.0f, 0.0f), ImGuiChildFlags_NavFlattened);
         ImGui::PopStyleVar();
         // Leaves room for the scrollbar without the page touching it.
         ImGui::PushItemWidth(-em(0.6f));
@@ -163,8 +239,8 @@ void Overlay::drawSettingsWindow() {
         case SettingsPage::Sound: drawSoundPage(); break;
         case SettingsPage::Controls: drawControlsPage(); break;
         case SettingsPage::Game: drawGamePage(); break;
-        case SettingsPage::Cheats: drawCheatsPage(); break;
         case SettingsPage::Interface: drawInterfacePage(); break;
+        case SettingsPage::Cheats: drawCheatsPage(); break;
         case SettingsPage::Count: break;
         }
         ImGui::Unindent(em(0.1f));
@@ -192,6 +268,7 @@ void Overlay::drawSettingsWindow() {
 }
 
 void Overlay::drawDisplayPage() {
+    const Settings &def = defaults();
     sectionHeader("Window");
     if (beginSettings("window")) {
         settingRow("Mode");
@@ -200,7 +277,8 @@ void Overlay::drawDisplayPage() {
         if (segmented("mode", &mode, kModes, 2))
             setFullscreen(mode == 1);
 
-        settingRow("Vertical sync", "Fast avoids tearing with less delay, where the system offers it.");
+        settingRow("Vertical sync", "Fast tears less than Off, with less delay than On.", nullptr,
+                   m_settings.display.presentMode != def.display.presentMode);
         static constexpr SDL_GPUPresentMode kPresent[] = {SDL_GPU_PRESENTMODE_VSYNC, SDL_GPU_PRESENTMODE_MAILBOX,
                                                          SDL_GPU_PRESENTMODE_IMMEDIATE};
         static constexpr const char *kSync[] = {"On", "Fast", "Off"};
@@ -214,24 +292,27 @@ void Overlay::drawDisplayPage() {
             m_backend.setDisplayOptions(m_settings.display);
             markDirty();
         }
+        rowDetail("On waits for the display's refresh. Fast avoids tearing with less delay, where the system "
+                  "offers it. Off draws as fast as it can and may tear.");
         endSettings();
     }
 
     sectionHeader("Picture");
     if (beginSettings("picture")) {
-        settingRow("Internal resolution",
-                   "Draws the game at a multiple of the PS2's own resolution. Above 1\xC3\x97 is slower for now.",
-                   "Experimental");
         const uint32_t active = m_backend.activeResolutionScale();
         const uint32_t shown = m_pendingScale != 0u ? m_pendingScale : active;
         const bool automatic = m_settings.autoScale || m_autoForced;
+        settingRow("Internal resolution",
+                   m_pendingScale == 0u ? "Higher is sharper and slower. Auto follows the window."
+                   : pausing()          ? "Applies when the game resumes."
+                                        : "Applying...",
+                   "Experimental", m_settings.autoScale || m_settings.resolutionScale != def.resolutionScale);
         char preview[128];
-        std::snprintf(preview, sizeof(preview), "%s%u%s   %u %s %u%s", automatic ? "Auto: " : "", shown, kTimes,
-                      512u * shown, kTimes, 448u * shown,
-                      m_pendingScale == 0u ? "" : pausing() ? "   when the game resumes" : "   applying...");
+        std::snprintf(preview, sizeof(preview), "%s%u%s   %u %s %u", automatic ? "Auto: " : "", shown, kTimes,
+                      512u * shown, kTimes, 448u * shown);
         if (ImGui::BeginCombo("##scale", preview)) {
             // Rogue Galaxy: added. From the window's height in pixels.
-            if (ImGui::Selectable("Auto   from the window's height", automatic))
+            if (ImGui::Selectable("Auto (from the window's height)", automatic))
                 setAutoScale(true);
             for (uint32_t scale = 1u; scale <= 8u; ++scale) {
                 char item[64];
@@ -242,47 +323,28 @@ void Overlay::drawDisplayPage() {
             }
             ImGui::EndCombo();
         }
-        if (automatic) {
-            settingRow("Auto: oversampling",
-                       "Lines drawn for each line of the window: 1.0 draws at least the window's height (1440 lines "
-                       "take 4x, 1792 lines), 1.25 and 1.5 more, smoother and slower. A wide window costs more at "
-                       "the same height.");
-            static constexpr const char *kOversample[] = {"1.0", "1.25", "1.5"};
-            int oversample = m_settings.autoOversample >= 150u ? 2 : m_settings.autoOversample >= 125u ? 1 : 0;
-            if (segmented("oversample", &oversample, kOversample, 3)) {
-                m_settings.autoOversample = oversample == 2 ? 150u : oversample == 1 ? 125u : 100u;
-                m_autoHeight = -1;
-                markDirty();
-            }
-            settingRow("Auto: at most", "The highest internal resolution Auto picks.");
-            static constexpr const char *kCaps[] = {"2x", "3x", "4x", "5x", "6x", "7x", "8x"};
-            int cap = static_cast<int>(std::clamp(m_settings.autoCap, 2u, 8u)) - 2;
-            if (segmented("autocap", &cap, kCaps, 7)) {
-                m_settings.autoCap = static_cast<uint32_t>(cap + 2);
-                m_autoHeight = -1;
-                markDirty();
-            }
-        }
+        rowDetail("Draws the game at a multiple of the PS2's own 512 x 448. Auto picks the multiple from the "
+                  "window's height (see Advanced). Above 1x is slower for now.");
 
         const char *aspectHelp = "";
         switch (m_settings.display.aspect) {
         case gfx::SdlGpuAspect::Auto: {
             // Rogue Galaxy's is on the Game page.
             const int wide = m_backend.gameWidescreen();
-            aspectHelp = wide == 1   ? "Follows Game > Widescreen: the window's shape."
-                         : wide == 0 ? "Follows Game > Widescreen: 4:3."
-                                     : "4:3, the shape the game draws for; it has no wide-screen option.";
+            aspectHelp = wide == 1   ? "Follows Widescreen on the Game page: the window's shape."
+                         : wide == 0 ? "Follows Widescreen on the Game page: 4:3."
+                                     : "4:3: this game has no widescreen option.";
             break;
         }
-        case gfx::SdlGpuAspect::Standard: aspectHelp = "The shape a television gave the game."; break;
+        case gfx::SdlGpuAspect::Standard: aspectHelp = "4:3, the shape a television gave the game."; break;
         case gfx::SdlGpuAspect::Wide:
             aspectHelp = m_backend.gameWidescreen() == 1 ? "16:9 whatever the window; the game draws for it."
-                                                         : "Stretches the 4:3 picture to 16:9; the game draws for 4:3.";
+                                                         : "Stretches the 4:3 picture to 16:9.";
             break;
-        case gfx::SdlGpuAspect::Native: aspectHelp = "Square pixels, as drawn; narrower than on a television."; break;
+        case gfx::SdlGpuAspect::Native: aspectHelp = "Square pixels: narrower than on a television."; break;
         case gfx::SdlGpuAspect::Stretch: aspectHelp = "Fills the window, whatever its shape."; break;
         }
-        settingRow("Aspect ratio", aspectHelp, "Experimental");
+        settingRow("Aspect ratio", aspectHelp, "Experimental", m_settings.display.aspect != def.display.aspect);
         static constexpr const char *kAspects[] = {"Auto", "4:3", "16:9", "Native", "Stretch"};
         int aspect = static_cast<int>(m_settings.display.aspect);
         if (segmented("aspect", &aspect, kAspects, 5)) {
@@ -292,16 +354,21 @@ void Overlay::drawDisplayPage() {
         }
 
         static constexpr const char *kFilterHelp[] = {
-            "Crisp pixels with no uneven columns, at any size.", "Soft, smooth scaling.",
+            "Crisp pixels with even columns, at any size.", "Soft, smooth scaling.",
             "Raw pixels; uneven unless the size is a whole multiple.",
             // Rogue Galaxy: added.
+            "AMD FSR 1: smoother edges when the window is larger.",
+            "Averages every rendered pixel, for 4x to 8x resolution."};
+        static constexpr const char *kFilterDetail[] = {
+            "", "", "",
             "AMD FSR 1's edge-aware upscaling: smooth edges without blur when the window is larger than the "
             "internal resolution; smooth scaling when it is not. Raise the internal resolution first: it adds "
             "real detail, which no upscaler can.",
             "For an internal resolution larger than the window (4x to 8x): every rendered pixel under each "
             "screen pixel is averaged (Lanczos), so edges stay smooth and fine detail stops shimmering. Smooth "
             "scaling when the window is the larger."};
-        settingRow("Scaling filter", kFilterHelp[static_cast<int>(m_settings.display.filter)]);
+        settingRow("Scaling filter", kFilterHelp[static_cast<int>(m_settings.display.filter)], nullptr,
+                   m_settings.display.filter != def.display.filter);
         static constexpr const char *kFilters[] = {"Sharp", "Smooth", "Nearest", "FSR", "Supersample"};
         int filter = static_cast<int>(m_settings.display.filter);
         if (segmented("filter", &filter, kFilters, 5)) {
@@ -309,11 +376,11 @@ void Overlay::drawDisplayPage() {
             m_backend.setDisplayOptions(m_settings.display);
             markDirty();
         }
+        rowDetail(kFilterDetail[static_cast<int>(m_settings.display.filter)]);
 
         // Rogue Galaxy: added (`sharpening` in the file).
-        settingRow("Sharpening",
-                   "AMD FSR 1's contrast-adaptive sharpening over the picture, with any filter: crisper edges and "
-                   "textures without halos. Off by default.");
+        settingRow("Sharpening", "AMD FSR 1 contrast sharpening, with any filter.", nullptr,
+                   m_settings.display.sharpening != def.display.sharpening);
         static constexpr const char *kSharpening[] = {"Off", "Low", "Medium", "High"};
         int sharpening = std::min<int>(m_settings.display.sharpening, 3);
         if (segmented("sharpening", &sharpening, kSharpening, 4)) {
@@ -321,14 +388,14 @@ void Overlay::drawDisplayPage() {
             m_backend.setDisplayOptions(m_settings.display);
             markDirty();
         }
+        rowDetail("Crisper edges and textures without halos. Off by default.");
 
         // Rogue Galaxy: added (`sides` in the file).
         static constexpr const char *kSidesHelp[] = {
-            "What fills the window beside a 4:3 picture: black bars.",
-            "What fills the window beside a 4:3 picture: the picture itself, softly blurred and a little darker.",
-            "What fills the window beside a 4:3 picture: your image, the first PNG or JPG in the game's "
-            "\"borders\" folder (the blurred picture without one)."};
-        settingRow("Borders", kSidesHelp[static_cast<int>(m_settings.display.sides)]);
+            "Black bars beside a 4:3 picture.", "The picture, blurred, beside a 4:3 picture.",
+            "Your image from the borders folder beside a 4:3 picture."};
+        settingRow("Borders", kSidesHelp[static_cast<int>(m_settings.display.sides)], nullptr,
+                   m_settings.display.sides != def.display.sides);
         static constexpr const char *kSides[] = {"Black", "Blurred", "Image"};
         int sides = static_cast<int>(m_settings.display.sides);
         if (segmented("sides", &sides, kSides, 3)) {
@@ -336,36 +403,86 @@ void Overlay::drawDisplayPage() {
             m_backend.setDisplayOptions(m_settings.display);
             markDirty();
         }
-
-        settingRow("Integer scaling", "Whole multiples of the picture's height: even lines, with borders.");
-        if (toggle("integer", &m_settings.display.integerScale)) {
-            m_backend.setDisplayOptions(m_settings.display);
-            markDirty();
-        }
-
-        settingRow("Sharper picture", "Drops the PS2's line blending, a deflicker for TVs that only blurs on a monitor.");
-        if (toggle("sharper", &m_settings.display.removeLineBlend)) {
-            m_backend.setDisplayOptions(m_settings.display);
-            markDirty();
-        }
+        rowDetail("What fills the window beside a 4:3 picture: black bars; the picture itself, softly blurred and "
+                  "a little darker; or your image, the first PNG or JPG in the game's \"borders\" folder (the "
+                  "blurred picture without one).");
         endSettings();
+    }
+
+    if (beginSection("Advanced", false) || g_unfoldAll) {
+        if (beginSettings("advanced")) {
+            const bool automatic = m_settings.autoScale || m_autoForced;
+            ImGui::BeginDisabled(!automatic);
+            settingRow("Auto resolution: oversampling",
+                       automatic ? "Lines drawn per line of the window; more is smoother." : "Used while Internal resolution is Auto.",
+                       nullptr, m_settings.autoOversample != def.autoOversample);
+            static constexpr const char *kOversample[] = {"1.0", "1.25", "1.5"};
+            int oversample = m_settings.autoOversample >= 150u ? 2 : m_settings.autoOversample >= 125u ? 1 : 0;
+            if (segmented("oversample", &oversample, kOversample, 3)) {
+                m_settings.autoOversample = oversample == 2 ? 150u : oversample == 1 ? 125u : 100u;
+                m_autoHeight = -1;
+                markDirty();
+            }
+            rowDetail("1.0 draws at least the window's height in lines (1440 lines take 4x, 1792 lines); 1.25 and "
+                      "1.5 draw more, smoother and slower. A wide window costs more at the same height.");
+            settingRow("Auto resolution: highest", "The most Auto will pick.", nullptr, m_settings.autoCap != def.autoCap);
+            static constexpr const char *kCaps[] = {"2x", "3x", "4x", "5x", "6x", "7x", "8x"};
+            int cap = static_cast<int>(std::clamp(m_settings.autoCap, 2u, 8u)) - 2;
+            if (segmented("autocap", &cap, kCaps, 7)) {
+                m_settings.autoCap = static_cast<uint32_t>(cap + 2);
+                m_autoHeight = -1;
+                markDirty();
+            }
+            ImGui::EndDisabled();
+
+            settingRow("Integer scaling", "Whole-number scale only: even lines, with borders.", nullptr,
+                       m_settings.display.integerScale != def.display.integerScale);
+            if (toggle("integer", &m_settings.display.integerScale)) {
+                m_backend.setDisplayOptions(m_settings.display);
+                markDirty();
+            }
+            rowDetail("Scales the picture by whole multiples of its height, so every line is the same thickness.");
+
+            settingRow("Sharper picture", "Removes the PS2's line blending, which only blurs on a monitor.", nullptr,
+                       m_settings.display.removeLineBlend != def.display.removeLineBlend);
+            if (toggle("sharper", &m_settings.display.removeLineBlend)) {
+                m_backend.setDisplayOptions(m_settings.display);
+                markDirty();
+            }
+            rowDetail("Drops the PS2's line blending, a deflicker for TVs that only blurs on a monitor.");
+            endSettings();
+        }
+    }
+
+    if (pageFooter("Restore picture defaults")) {
+        // The window's mode stays as it is.
+        m_settings.display = def.display;
+        m_settings.autoOversample = def.autoOversample;
+        m_settings.autoCap = def.autoCap;
+        m_autoHeight = -1;
+        m_backend.setDisplayOptions(m_settings.display);
+        requestScale(def.resolutionScale);
+        markDirty();
+        notify("Picture settings restored", Icon::Check);
     }
 }
 
 void Overlay::drawSoundPage() {
+    const Settings &def = defaults();
     sectionHeader("Volume");
     if (beginSettings("sound")) {
-        settingRow("Master volume");
+        settingRow("Master volume", nullptr, nullptr, m_settings.volume != def.volume);
         if (ImGui::SliderInt("##volume", &m_settings.volume, 0, 100, "%d%%")) {
             applyVolume();
             markDirty();
         }
-        settingRow("Mute");
+        settingRow("Mute", nullptr, nullptr, m_settings.muted != def.muted);
         if (toggle("mute", &m_settings.muted)) {
             applyVolume();
             markDirty();
         }
-        settingRow("Mute in the background", "Silences the game while its window is not in front.");
+        settingRow("Mute in the background", "Silences the game while its window is not in front.", nullptr,
+                   m_settings.muteInBackground != def.muteInBackground);
         if (toggle("background", &m_settings.muteInBackground)) {
             applyVolume();
             markDirty();
@@ -374,12 +491,21 @@ void Overlay::drawSoundPage() {
     }
     if (!m_host.setVolume)
         mutedText("Sound is not available in this build.");
+    if (pageFooter("Restore sound defaults")) {
+        m_settings.volume = def.volume;
+        m_settings.muted = def.muted;
+        m_settings.muteInBackground = def.muteInBackground;
+        applyVolume();
+        markDirty();
+        notify("Sound settings restored", Icon::Check);
+    }
 }
 
 void Overlay::drawInterfacePage() {
+    const Settings &def = defaults();
     sectionHeader("Menu");
     if (beginSettings("menu")) {
-        settingRow("Menu size", "Scales this menu and its messages.");
+        settingRow("Menu size", "Scales this menu; a small window caps it to fit.", nullptr, m_settings.uiScale != def.uiScale);
         // Applied on release: the menu resizing under the cursor mid-drag
         // would move the slider away from it.
         if (!ImGui::IsAnyItemActive() || m_uiScaleEdit == 0)
@@ -389,14 +515,13 @@ void Overlay::drawInterfacePage() {
             m_settings.uiScale = m_uiScaleEdit;
             markDirty();
         }
-        settingRow("Notifications", "Short messages about controllers, screenshots and changes.");
+        settingRow("Notifications", "Short messages about controllers, screenshots and changes.", nullptr,
+                   m_settings.notifications != def.notifications);
         if (toggle("notifications", &m_settings.notifications))
             markDirty();
-        settingRow("Hide the idle mouse cursor");
+        settingRow("Hide the idle mouse cursor", "Hides the pointer while it is not moving.", nullptr,
+                   m_settings.hideIdleCursor != def.hideIdleCursor);
         if (toggle("cursor", &m_settings.hideIdleCursor))
-            markDirty();
-        settingRow("Back + Start opens the menu", "The Guide button (Xbox, PS, Home) always does.");
-        if (toggle("backstart", &m_settings.backStartOpensMenu))
             markDirty();
         endSettings();
     }
@@ -405,22 +530,21 @@ void Overlay::drawInterfacePage() {
         sectionHeader("Pause and speed");
         if (beginSettings("pausing")) {
             if (canPause()) {
-                settingRow("Pause while the menu is open");
+                settingRow("Pause while the menu is open", nullptr, nullptr, m_settings.pauseInMenu != def.pauseInMenu);
                 if (toggle("pausemenu", &m_settings.pauseInMenu)) {
                     applyPause();
                     markDirty();
                 }
-                settingRow("Pause in the background", "Stops the game while its window is not in front.");
+                settingRow("Pause in the background", "Stops the game while its window is not in front.", nullptr,
+                           m_settings.pauseInBackground != def.pauseInBackground);
                 if (toggle("pausebackground", &m_settings.pauseInBackground)) {
                     applyPause();
                     markDirty();
                 }
             }
             if (canChangeSpeed()) {
-                settingRow("Fast-forward speed",
-                           "F4 switches between it and normal speed; ` (left of 1) held runs at it until let go. "
-                           "Music and sounds keep their tempo.",
-                           "Experimental");
+                settingRow("Fast-forward speed", "F4 switches it on and off; ` held runs at it.", "Experimental",
+                           m_settings.fastForwardSpeed != def.fastForwardSpeed);
                 // 1.5 and 8 (Rogue Galaxy: added); "Max" is unpaced.
                 static constexpr float kSpeeds[] = {1.5f, 2.0f, 3.0f, 4.0f, 8.0f, 0.0f};
                 static constexpr const char *kSpeedNames[] = {"1.5\xC3\x97", "2\xC3\x97", "3\xC3\x97",
@@ -432,15 +556,17 @@ void Overlay::drawInterfacePage() {
                         speed = index;
                 if (segmented("speed", &speed, kSpeedNames, kSpeedCount))
                     setFastForwardSpeed(kSpeeds[speed]);
+                rowDetail("Max runs as fast as the PC goes. Music and sounds keep their tempo, and movies play at "
+                          "normal speed.");
                 if (m_host.setTriggerFastForward) {
-                    settingRow("L2 and R2 control fast-forward",
-                               "R2 held fast-forwards, L2 switches it on and off, with the controller or the keys "
-                               "bound to them. The game then no longer gets L2 and R2 (the free camera still "
-                               "does).");
+                    settingRow("L2 and R2 control fast-forward", "L2 switches it, R2 held runs it; the game loses both.",
+                               nullptr, m_settings.triggerFastForward != def.triggerFastForward);
                     if (toggle("triggerspeed", &m_settings.triggerFastForward)) {
                         m_host.setTriggerFastForward(m_settings.triggerFastForward);
                         markDirty();
                     }
+                    rowDetail("R2 held fast-forwards, L2 switches it on and off, with the controller or the keys "
+                              "bound to them. The game then no longer gets L2 and R2 (the free camera still does).");
                 }
             }
             endSettings();
@@ -449,10 +575,11 @@ void Overlay::drawInterfacePage() {
 
     sectionHeader("Frame rate");
     if (beginSettings("framerate")) {
-        settingRow("Show the frame rate", "Frames the game draws each second. F3 toggles it.");
+        settingRow("Show the frame rate", "Frames the game draws each second (F3).", nullptr,
+                   m_settings.showFps != def.showFps);
         if (toggle("fps", &m_settings.showFps))
             markDirty();
-        settingRow("Position");
+        settingRow("Position", nullptr, nullptr, m_settings.fpsCorner != def.fpsCorner);
         static constexpr const char *kCorners[] = {"Top left", "Top right", "Bottom left", "Bottom right"};
         int corner = static_cast<int>(m_settings.fpsCorner);
         if (segmented("corner", &corner, kCorners, 4)) {
@@ -461,6 +588,25 @@ void Overlay::drawInterfacePage() {
         }
         endSettings();
     }
+
+    if (pageFooter("Restore interface defaults")) {
+        m_settings.uiScale = def.uiScale;
+        m_uiScaleEdit = 0;
+        m_settings.notifications = def.notifications;
+        m_settings.hideIdleCursor = def.hideIdleCursor;
+        m_settings.pauseInMenu = def.pauseInMenu;
+        m_settings.pauseInBackground = def.pauseInBackground;
+        m_settings.showFps = def.showFps;
+        m_settings.fpsCorner = def.fpsCorner;
+        m_settings.triggerFastForward = def.triggerFastForward;
+        if (m_host.setTriggerFastForward)
+            m_host.setTriggerFastForward(def.triggerFastForward);
+        if (canChangeSpeed())
+            setFastForwardSpeed(def.fastForwardSpeed);
+        applyPause();
+        markDirty();
+        notify("Interface settings restored", Icon::Check);
+    }
 }
 
 // The game's own switches, in the host's sections (Rogue Galaxy: added).
@@ -468,7 +614,24 @@ void Overlay::drawInterfacePage() {
 // for screenshots of options below the fold (Rogue Galaxy: added).
 std::string g_scrollToGameOption;
 
-void Overlay::drawGamePage() { drawGameOptions(false); }
+void Overlay::drawGamePage() {
+    drawGameOptions(false);
+    if (pageFooter("Restore game defaults")) {
+        restoreGameDefaults(false);
+        notify("Game settings restored", Icon::Check);
+    }
+}
+
+void Overlay::restoreGameDefaults(bool cheats) {
+    for (const GameOption &option : m_host.gameOptions) {
+        if (isCheatKey(option.key) != cheats || option.action || !option.remembered)
+            continue;
+        if (option.number())
+            setGameNumberValue(option.key, option.defaultNumber);
+        else
+            setGameOptionValue(option.key, option.defaultValue);
+    }
+}
 
 void Overlay::drawGameOptions(bool cheats) {
     if (m_host.gameOptions.empty()) {
@@ -485,13 +648,24 @@ void Overlay::drawGameOptions(bool cheats) {
         if (!started || section != m_host.gameSections.end()) {
             if (table)
                 endSettings();
-            sectionHeader(section != m_host.gameSections.end() ? section->second.c_str() : "Game");
-            table = beginSettings(("game." + option.key).c_str());
+            const bool folded = std::find(m_host.gameFolded.begin(), m_host.gameFolded.end(), option.key) !=
+                                m_host.gameFolded.end();
+            const bool open = beginSection(section != m_host.gameSections.end() ? section->second.c_str() : "Game",
+                                           !folded) || g_unfoldAll;
+            table = open && beginSettings(("game." + option.key).c_str());
             started = true;
         }
         if (!table)
             continue;
-        settingRow(option.label.c_str(), option.help.empty() ? nullptr : option.help.c_str());
+        const std::string *detailText = nullptr;
+        for (const auto &entry : m_host.gameDetails)
+            if (entry.first == option.key)
+                detailText = &entry.second;
+        const char *detail = detailText ? detailText->c_str() : nullptr;
+        const bool changed = option.remembered && !option.action &&
+                             (option.number() ? gameNumber(option) != option.defaultNumber
+                                              : gameOption(option) != option.defaultValue);
+        settingRow(option.label.c_str(), option.help.empty() ? nullptr : option.help.c_str(), nullptr, changed);
         if (!g_scrollToGameOption.empty() && g_scrollToGameOption == option.key) {
             ImGui::SetScrollHereY(0.2f);
             g_scrollToGameOption.clear();
@@ -510,6 +684,7 @@ void Overlay::drawGameOptions(bool cheats) {
                     m_host.setGameNumber(option.key, next);
                 markDirty();
             }
+            rowDetail(detail);
             continue;
         }
         if (option.number()) {
@@ -526,6 +701,7 @@ void Overlay::drawGameOptions(bool cheats) {
                                                                 reset - style.ItemSpacing.x * 2.0f));
             ImGui::SliderInt("##value", &next, option.minimum, option.maximum,
                              option.format.empty() ? "%d" : option.format.c_str());
+            rowDetail(detail);
             ImGui::SameLine();
             if (ImGui::Button("+", ImVec2(button, 0.0f)))
                 next = value + option.step;
@@ -554,6 +730,8 @@ void Overlay::drawGameOptions(bool cheats) {
                 m_host.setGameOption(option.key, true);
             ImGui::PopID();
             ImGui::EndDisabled();
+            if (!masterOn && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+                ImGui::SetTooltip("Turn Cheats on first.");
             continue;
         }
         bool on = gameOption(option);
@@ -564,6 +742,7 @@ void Overlay::drawGameOptions(bool cheats) {
                 else if (m_host.setGameOption)
                     m_host.setGameOption(option.key, on);
             }
+            rowDetail(detail);
             continue;
         }
         if (toggle(option.key.c_str(), &on)) {
@@ -573,23 +752,27 @@ void Overlay::drawGameOptions(bool cheats) {
                 m_host.setGameOption(option.key, on);
             markDirty();
         }
+        rowDetail(detail);
         if (waitsForRestart(option))
-            ImGui::TextColored(color(palette::kBad), "Restart the game for this to take effect.");
+            ImGui::TextColored(color(palette::kWarn), "Takes effect at the next start.");
     }
     if (table)
         endSettings();
 }
 
 void Overlay::drawControlsPage() {
+    const Settings &def = defaults();
     const auto controllers = m_backend.padInput().controllers();
     sectionHeader("Devices");
     if (beginSettings("devices")) {
         gfx::PadConfig config = m_settings.pad;
         bool changed = false;
-        settingRow("Keyboard", "Plays alongside the controller.");
+        settingRow("Keyboard", "Plays alongside the controller.", nullptr,
+                   config.keyboardEnabled != def.pad.keyboardEnabled);
         changed |= toggle("keyboard", &config.keyboardEnabled);
 
-        settingRow("Controller", "Which controller plays the game.");
+        settingRow("Controller", "Which controller plays the game.", nullptr,
+                   config.controllers != def.pad.controllers);
         std::string preview = "Any connected controller";
         if (config.controllers == gfx::ControllerSelection::None) {
             preview = "No controller";
@@ -625,6 +808,11 @@ void Overlay::drawControlsPage() {
             }
             ImGui::EndCombo();
         }
+
+        settingRow("Open the menu with Back + Start", "The Guide button (Xbox, PS, Home) always does.", nullptr,
+                   m_settings.backStartOpensMenu != def.backStartOpensMenu);
+        if (toggle("backstart", &m_settings.backStartOpensMenu))
+            markDirty();
         endSettings();
         if (changed)
             setPadConfig(config);
@@ -632,7 +820,9 @@ void Overlay::drawControlsPage() {
 
     // What is plugged in, and what of it plays.
     if (controllers.empty()) {
+        ImGui::PushTextWrapPos(0.0f);
         mutedText("No controller connected. Plug one in or pair it; it is picked up at once.");
+        ImGui::PopTextWrapPos();
     } else {
         for (const auto &controller : controllers) {
             ImGui::PushID(&controller);
@@ -654,10 +844,38 @@ void Overlay::drawControlsPage() {
         }
     }
 
-    sectionHeader("Buttons");
+    sectionHeader("Sticks and triggers");
+    if (beginSettings("analog")) {
+        gfx::PadConfig config = m_settings.pad;
+        bool changed = false;
+        settingRow("Stick dead zone", "Ignores the small drift of a worn stick.", nullptr,
+                   std::fabs(config.stickDeadZone - def.pad.stickDeadZone) > 0.001f);
+        float deadZone = config.stickDeadZone * 100.0f;
+        if (ImGui::SliderFloat("##deadzone", &deadZone, 0.0f, 40.0f, "%.0f%%")) {
+            config.stickDeadZone = deadZone / 100.0f;
+            changed = true;
+        }
+        settingRow("Trigger press point", "How far L2 and R2 travel before they count as pressed.", nullptr,
+                   std::fabs(config.triggerThreshold - def.pad.triggerThreshold) > 0.001f);
+        float threshold = config.triggerThreshold * 100.0f;
+        if (ImGui::SliderFloat("##trigger", &threshold, 5.0f, 90.0f, "%.0f%%")) {
+            config.triggerThreshold = threshold / 100.0f;
+            changed = true;
+        }
+        settingRow("Invert camera left and right", nullptr, nullptr, config.invertCameraX != def.pad.invertCameraX);
+        changed |= toggle("invertx", &config.invertCameraX);
+        settingRow("Invert camera up and down", nullptr, nullptr, config.invertCameraY != def.pad.invertCameraY);
+        changed |= toggle("inverty", &config.invertCameraY);
+        endSettings();
+        if (changed)
+            setPadConfig(config);
+    }
+
+    sectionHeader("Button bindings");
     {
         const float width = ImGui::GetContentRegionAvail().x;
-        const ImVec2 size(std::min(width * 0.56f, em(16.0f)), std::min(width * 0.56f, em(16.0f)) * 0.62f);
+        const float diagram = std::min(width * 0.5f, em(15.0f));
+        const ImVec2 size(diagram, diagram * 0.62f);
         const ImVec2 at = ImGui::GetCursorScreenPos();
         ImGui::Dummy(size);
         drawPadDiagram(ImGui::GetWindowDrawList(), at, size, m_backend.padInput().preview(), m_hoveredInput);
@@ -690,29 +908,17 @@ void Overlay::drawControlsPage() {
         ImGui::EndTabBar();
     }
 
-    sectionHeader("Analog sticks");
-    if (beginSettings("analog")) {
+    if (pageFooter("Restore device and stick defaults")) {
         gfx::PadConfig config = m_settings.pad;
-        bool changed = false;
-        settingRow("Dead zone", "Ignores the small drift of a worn stick.");
-        float deadZone = config.stickDeadZone * 100.0f;
-        if (ImGui::SliderFloat("##deadzone", &deadZone, 0.0f, 40.0f, "%.0f%%")) {
-            config.stickDeadZone = deadZone / 100.0f;
-            changed = true;
-        }
-        settingRow("Trigger threshold", "How far L2 and R2 travel before they count as pressed.");
-        float threshold = config.triggerThreshold * 100.0f;
-        if (ImGui::SliderFloat("##trigger", &threshold, 5.0f, 90.0f, "%.0f%%")) {
-            config.triggerThreshold = threshold / 100.0f;
-            changed = true;
-        }
-        settingRow("Invert camera left and right");
-        changed |= toggle("invertx", &config.invertCameraX);
-        settingRow("Invert camera up and down");
-        changed |= toggle("inverty", &config.invertCameraY);
-        endSettings();
-        if (changed)
-            setPadConfig(config);
+        config.keyboardEnabled = def.pad.keyboardEnabled;
+        config.controllers = def.pad.controllers;
+        config.stickDeadZone = def.pad.stickDeadZone;
+        config.triggerThreshold = def.pad.triggerThreshold;
+        config.invertCameraX = def.pad.invertCameraX;
+        config.invertCameraY = def.pad.invertCameraY;
+        m_settings.backStartOpensMenu = def.backStartOpensMenu;
+        setPadConfig(config);
+        notify("Device and stick settings restored (buttons keep their own Restore button)", Icon::Check);
     }
 }
 
@@ -722,9 +928,9 @@ void Overlay::drawBindingTable(bool keyboard) {
     PadInput hovered = PadInput::Count;
     const ImGuiTableFlags flags = ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_PadOuterX;
     if (ImGui::BeginTable(keyboard ? "##keys" : "##buttons", 3, flags)) {
-        ImGui::TableSetupColumn("PS2", ImGuiTableColumnFlags_WidthStretch, 1.25f);
+        ImGui::TableSetupColumn("Game button", ImGuiTableColumnFlags_WidthStretch, 1.25f);
         ImGui::TableSetupColumn(keyboard ? "Key" : "Button", ImGuiTableColumnFlags_WidthStretch, 1.0f);
-        ImGui::TableSetupColumn("Alternate", ImGuiTableColumnFlags_WidthStretch, 1.0f);
+        ImGui::TableSetupColumn("Alternative", ImGuiTableColumnFlags_WidthStretch, 1.0f);
         ImGui::PushStyleColor(ImGuiCol_Text, color(palette::kTextMuted));
         ImGui::TableHeadersRow();
         ImGui::PopStyleColor();
@@ -792,7 +998,10 @@ void Overlay::drawBindingTable(bool keyboard) {
 
 void Overlay::drawAbout() {
     centerNextWindow();
-    ImGui::SetNextWindowSize(ImVec2(std::min(ImGui::GetMainViewport()->WorkSize.x - em(2.0f), em(31.0f)), 0.0f));
+    const ImVec2 area = ImGui::GetMainViewport()->WorkSize;
+    // Never taller than the window: it scrolls instead.
+    ImGui::SetNextWindowSizeConstraints(ImVec2(0.0f, 0.0f), ImVec2(area.x - em(2.0f), area.y - em(2.0f)));
+    ImGui::SetNextWindowSize(ImVec2(std::min(area.x - em(2.0f), em(31.0f)), 0.0f));
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(em(1.4f), em(1.2f)));
     if (beginWindow("##about", nullptr, kDialogFlags & ~ImGuiWindowFlags_AlwaysAutoResize)) {
         icon(Icon::Disc, em(3.0f), palette::kGold);
@@ -836,7 +1045,7 @@ void Overlay::drawAbout() {
         if (iconButton("Report a problem", Icon::Warning))
             SDL_OpenURL(kIssuesUrl);
         ImGui::Dummy(ImVec2(0.0f, em(0.2f)));
-        ImGui::PushFont(nullptr, ImGui::GetStyle().FontSizeBase * 0.84f);
+        pushScaledFont(0.84f);
         ImGui::PushTextWrapPos(0.0f);
         mutedText("%s", "Rogue Galaxy is a trademark of Sony Interactive Entertainment. This project is not "
                         "affiliated with Sony or Level-5, and includes nothing from the game.");
@@ -848,52 +1057,74 @@ void Overlay::drawAbout() {
 }
 
 void Overlay::drawShortcuts() {
+    const ImGuiViewport *viewport = ImGui::GetMainViewport();
+    const ImVec2 area = viewport->WorkSize;
     centerNextWindow();
+    // Never taller than the window: it scrolls instead.
+    ImGui::SetNextWindowSizeConstraints(ImVec2(0.0f, 0.0f), ImVec2(area.x - em(2.0f), area.y - em(2.0f)));
+    const bool sideBySide = area.x >= em(54.0f);
+    ImGui::SetNextWindowSize(ImVec2(std::min(area.x - em(2.0f), sideBySide ? em(52.0f) : em(28.0f)), 0.0f));
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(em(1.4f), em(1.2f)));
-    if (beginWindow("##shortcuts", nullptr, kDialogFlags)) {
+    if (beginWindow("##shortcuts", nullptr, kDialogFlags & ~ImGuiWindowFlags_AlwaysAutoResize)) {
         dialogHeader(Icon::Keyboard, "Shortcuts", &m_shortcutsOpen);
-        sectionHeader("Keyboard");
-        if (ImGui::BeginTable("##keys", 2, ImGuiTableFlags_None)) {
-            ImGui::TableSetupColumn("keys", ImGuiTableColumnFlags_WidthFixed, em(7.5f));
-            ImGui::TableSetupColumn("what", ImGuiTableColumnFlags_WidthFixed, em(15.0f));
-            static constexpr const char *kF1[] = {"F1"}, *kF2[] = {"F2"}, *kF3[] = {"F3"}, *kF4[] = {"F4"},
-                                        *kF11[] = {"F11"}, *kAltEnter[] = {"Alt", "Enter"}, *kF12[] = {"F12"},
-                                        *kShiftF12[] = {"Shift", "F12"}, *kEsc[] = {"Esc"}, *kF5[] = {"F5"};
-            static constexpr const char *kGrave[] = {"`"};
-            shortcutRow(kF1, 1, "Open or close this menu");
-            if (canPause())
-                shortcutRow(kF2, 1, "Pause or resume");
-            shortcutRow(kF3, 1, "Show the frame rate");
-            if (canChangeSpeed())
-                shortcutRow(kF4, 1, "Fast-forward");
-            if (canChangeSpeed())
-                shortcutRow(kGrave, 1, "Fast-forward while held");
-            if (m_host.cheatsStatus)
-                shortcutRow(kF5, 1, "Cheats on or off (the master switch)");
-            shortcutRow(kF11, 1, "Fullscreen");
-            shortcutRow(kAltEnter, 2, "Fullscreen");
-            shortcutRow(kF12, 1, "Screenshot of the game");
-            shortcutRow(kShiftF12, 2, "Screenshot with the menu");
-            shortcutRow(kEsc, 1, "Back, in the menu");
-            ImGui::EndTable();
-        }
-        sectionHeader("Controller");
-        if (ImGui::BeginTable("##pad", 2, ImGuiTableFlags_None)) {
-            ImGui::TableSetupColumn("keys", ImGuiTableColumnFlags_WidthFixed, em(7.5f));
-            ImGui::TableSetupColumn("what", ImGuiTableColumnFlags_WidthFixed, em(15.0f));
-            static constexpr const char *kGuide[] = {"Guide"}, *kBackStart[] = {"Back", "Start"},
-                                        *kShoulders[] = {"L1", "R1"}, *kBack[] = {"B / Circle"};
-            shortcutRow(kGuide, 1, "Open or close the menu");
-            if (m_settings.backStartOpensMenu)
-                shortcutRow(kBackStart, 2, "Open or close the menu");
-            shortcutRow(kShoulders, 2, "Previous and next settings page", "/");
-            static constexpr const char *kR2[] = {"R2"}, *kL2[] = {"L2"};
-            if (canChangeSpeed() && m_host.setTriggerFastForward && m_settings.triggerFastForward) {
-                shortcutRow(kR2, 1, "Fast-forward while held");
-                shortcutRow(kL2, 1, "Fast-forward on or off");
+        const bool hasFreeCamera = std::any_of(m_host.gameOptions.begin(), m_host.gameOptions.end(),
+                                               [](const GameOption &option) { return option.key == "free_camera"; });
+        const auto keyboard = [&] {
+            sectionHeader("Keyboard");
+            if (ImGui::BeginTable("##keys", 2, ImGuiTableFlags_None)) {
+                ImGui::TableSetupColumn("keys", ImGuiTableColumnFlags_WidthFixed, em(9.5f));
+                ImGui::TableSetupColumn("what", ImGuiTableColumnFlags_WidthStretch);
+                shortcutAlternatives({{"F1"}}, "Open or close this menu");
+                if (canPause())
+                    shortcutAlternatives({{"F2"}}, "Pause or resume");
+                shortcutAlternatives({{"F3"}}, "Show the frame rate");
+                if (canChangeSpeed()) {
+                    shortcutAlternatives({{"F4"}}, "Fast-forward on or off");
+                    shortcutAlternatives({{"`"}}, "Fast-forward while held");
+                }
+                if (m_host.cheatsStatus)
+                    shortcutAlternatives({{"F5"}}, "Cheats on or off");
+                if (hasFreeCamera)
+                    shortcutAlternatives({{"F6"}}, "Free camera on or off");
+                shortcutAlternatives({{"F8"}}, "Reload the texture pack");
+                shortcutAlternatives({{"F11"}, {"Alt", "Enter"}}, "Fullscreen");
+                shortcutAlternatives({{"F12"}}, "Screenshot of the game");
+                shortcutAlternatives({{"Shift", "F12"}}, "Screenshot with the menu");
+                shortcutAlternatives({{"Esc"}}, "Back, in the menu");
+                ImGui::EndTable();
             }
-            shortcutRow(kBack, 1, "Back, in the menu");
+        };
+        const auto controller = [&] {
+            sectionHeader("Controller");
+            if (ImGui::BeginTable("##pad", 2, ImGuiTableFlags_None)) {
+                ImGui::TableSetupColumn("keys", ImGuiTableColumnFlags_WidthFixed, em(9.5f));
+                ImGui::TableSetupColumn("what", ImGuiTableColumnFlags_WidthStretch);
+                shortcutAlternatives({{"Guide"}}, "Open or close the menu");
+                if (m_settings.backStartOpensMenu)
+                    shortcutAlternatives({{"Back", "Start"}}, "Open or close the menu");
+                shortcutAlternatives({{"L1"}, {"R1"}}, "Previous and next settings page", "/");
+                if (canChangeSpeed() && m_host.setTriggerFastForward && m_settings.triggerFastForward) {
+                    shortcutAlternatives({{"R2"}}, "Fast-forward while held");
+                    shortcutAlternatives({{"L2"}}, "Fast-forward on or off");
+                }
+                if (hasFreeCamera)
+                    shortcutAlternatives({{"Start"}}, "Leave the free camera");
+                shortcutAlternatives({{"B / Circle"}}, "Back, in the menu");
+                ImGui::EndTable();
+            }
+        };
+        if (sideBySide && ImGui::BeginTable("##columns", 2, ImGuiTableFlags_None)) {
+            ImGui::TableSetupColumn("a", ImGuiTableColumnFlags_WidthStretch);
+            ImGui::TableSetupColumn("b", ImGuiTableColumnFlags_WidthStretch);
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            keyboard();
+            ImGui::TableNextColumn();
+            controller();
             ImGui::EndTable();
+        } else if (!sideBySide) {
+            keyboard();
+            controller();
         }
     }
     ImGui::End();
@@ -976,23 +1207,25 @@ void Overlay::drawStats() {
 void Overlay::drawCheatsPage() {
     const int status = m_host.cheatsStatus ? m_host.cheatsStatus() : 0;
     ImGui::PushTextWrapPos(0.0f);
-    mutedText("%s", "Trainer-style helpers for playing around. They change the game's numbers while it runs, "
-                    "so they act only while the master switch is on. The master switch is off at every start, "
-                    "and while it is on the game cannot save: a save made with cheats in it is the one that "
-                    "gets corrupted.");
+    mutedText("%s", "Trainer-style helpers. They act only while Cheats on is set, and the game cannot save then.");
     ImGui::PopTextWrapPos();
-    ImGui::Dummy(ImVec2(0.0f, em(0.3f)));
     if (status > 0) {
+        ImGui::Dummy(ImVec2(0.0f, em(0.2f)));
         icon(Icon::Warning, em(1.0f), palette::kWarn);
         ImGui::SameLine(0.0f, em(0.5f));
-        ImGui::TextColored(color(palette::kWarn), "Cheats are on: saving is blocked until the master switch is off (F5).");
+        ImGui::PushTextWrapPos(0.0f);
+        ImGui::TextColored(color(palette::kWarn), "Cheats are on: saving is blocked until they are off (F5).");
+        ImGui::PopTextWrapPos();
     }
     drawGameOptions(true);
     ImGui::Dummy(ImVec2(0.0f, em(0.4f)));
     ImGui::PushTextWrapPos(0.0f);
-    mutedText("%s", "Experience, money and drop rates have their own options on the Game page, and Developer "
-                    "tools there gives items.");
+    mutedText("%s", "Experience, money and drop rates are on the Game page, and Developer tools there gives items.");
     ImGui::PopTextWrapPos();
+    if (pageFooter("Reset all cheats")) {
+        restoreGameDefaults(true);
+        notify("Cheats reset", Icon::Check);
+    }
 }
 
 bool Overlay::toggleCheatsMaster() {
@@ -1021,22 +1254,24 @@ void Overlay::requestCheatsMaster(bool on) {
 
 void Overlay::drawCheatNotice() {
     centerNextWindow();
-    ImGui::SetNextWindowSize(ImVec2(std::min(ImGui::GetMainViewport()->WorkSize.x - em(2.0f), em(32.0f)), 0.0f));
+    const ImVec2 area = ImGui::GetMainViewport()->WorkSize;
+    // Never taller than the window: it scrolls instead.
+    ImGui::SetNextWindowSizeConstraints(ImVec2(0.0f, 0.0f), ImVec2(area.x - em(2.0f), area.y - em(2.0f)));
+    ImGui::SetNextWindowSize(ImVec2(std::min(area.x - em(2.0f), em(32.0f)), 0.0f));
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(em(1.4f), em(1.2f)));
     if (beginWindow("##cheatnotice", nullptr, kDialogFlags & ~ImGuiWindowFlags_AlwaysAutoResize)) {
         ImGui::SetWindowFocus();
         dialogHeader(Icon::Warning, "Turn cheats on?", nullptr);
         ImGui::Dummy(ImVec2(0.0f, em(0.3f)));
         ImGui::PushTextWrapPos(0.0f);
-        ImGui::TextUnformatted("Cheats change the game's numbers while it runs: health, AP, money, damage. "
-                               "They can make the story trivial, and one-hit kills can end a fight the story "
-                               "meant you to see through.");
+        ImGui::TextUnformatted("Cheats change the game's numbers while you play: health, AP, money, damage. "
+                               "They can make the story trivial, and one-hit kills can skip a fight the story "
+                               "needs.");
         ImGui::Dummy(ImVec2(0.0f, em(0.3f)));
-        ImGui::TextUnformatted("To keep your saves safe the game cannot save while cheats are on: saving fails "
-                               "with the game's own error message. Turn the master switch off "
-                               "(Settings > Cheats, or F5) before you save.");
+        ImGui::TextUnformatted("The game cannot save while cheats are on, so a cheated save never reaches your "
+                               "memory card. Turn Cheats off (Settings > Cheats, or F5) before you save.");
         ImGui::Dummy(ImVec2(0.0f, em(0.3f)));
-        mutedText("%s", "This notice is shown once. The master switch is off every time the game starts.");
+        mutedText("%s", "Shown once. Cheats are off every time the game starts.");
         ImGui::PopTextWrapPos();
         ImGui::Dummy(ImVec2(0.0f, em(0.5f)));
         if (iconButton("Turn cheats on", Icon::Check, true)) {
@@ -1047,14 +1282,16 @@ void Overlay::drawCheatNotice() {
             requestCheatsMaster(true);
         }
         ImGui::SameLine();
-        if (iconButton("Not now", Icon::Close))
+        if (iconButton("Keep cheats off", Icon::Close))
             m_cheatNoticeOpen = false;
+        // The safe answer is the one a stray press lands on.
+        ImGui::SetItemDefaultFocus();
     }
     ImGui::End();
     ImGui::PopStyleVar();
 }
 
-// "CHEATS ON", in a corner of the picture, as long as the master is on.
+// "Cheats on", in a corner of the picture, as long as the master is on.
 void Overlay::drawCheatBadge() {
     const int status = m_host.cheatsStatus ? m_host.cheatsStatus() : 0;
     if (m_host.cheatsRefusals) {
@@ -1078,7 +1315,7 @@ void Overlay::drawCheatBadge() {
         ImGui::BringWindowToDisplayFront(ImGui::GetCurrentWindow());
         icon(Icon::Warning, em(1.0f), palette::kWarn);
         ImGui::SameLine(0.0f, em(0.45f));
-        ImGui::TextUnformatted(status > 1 ? "CHEATS ON  -  saving blocked" : "Cheats master on  -  saving blocked");
+        ImGui::TextUnformatted(status > 1 ? "Cheats on: saving blocked" : "Cheats on, none chosen: saving blocked");
     }
     ImGui::End();
     ImGui::PopStyleVar();

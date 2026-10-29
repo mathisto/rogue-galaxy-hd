@@ -90,6 +90,11 @@ struct HostServices {
     std::vector<GameOption> gameOptions;
     // The Game page's sections: a title each, before the option of its key.
     std::vector<std::pair<std::string, std::string>> gameSections;
+    // The long explanation of an option, by key, shown as a tooltip on hover
+    // and focus; `help` stays one short line (menu UX pass).
+    std::vector<std::pair<std::string, std::string>> gameDetails;
+    // The keys that open the sections that start folded.
+    std::vector<std::string> gameFolded;
     std::function<void(const std::string &key, bool on)> setGameOption;
     std::function<void(const std::string &key, int value)> setGameNumber;
     std::function<bool(const std::string &key)> gameOptionState;
@@ -101,8 +106,10 @@ struct HostServices {
     std::function<unsigned()> cheatsRefusals;
 };
 
-// Game: Rogue Galaxy's own switches (added).
-enum class SettingsPage : uint8_t { Display, Sound, Controls, Game, Cheats, Interface, Count };
+// Game: Rogue Galaxy's own switches (added). In the order of the page list:
+// the ones used most first, Cheats last.
+enum class SettingsPage : uint8_t { Display, Sound, Controls, Game, Interface, Cheats, Count };
+inline constexpr const char *kSettingsPageNames[] = {"Display", "Sound", "Controls", "Game", "Interface", "Cheats"};
 
 class Overlay final : public gfx::SdlGpuOverlay {
 public:
@@ -206,6 +213,8 @@ private:
     void drawBindingTable(bool keyboard);
     void drawGamePage();
     void drawGameOptions(bool cheats);
+    // Every option of the Game page, or of the Cheats page, back to its default.
+    void restoreGameDefaults(bool cheats);
     void drawCheatsPage();
     void drawCheatNotice();
     void drawCheatBadge();

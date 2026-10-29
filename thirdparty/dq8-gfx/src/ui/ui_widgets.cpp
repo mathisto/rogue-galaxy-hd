@@ -2,6 +2,8 @@
 
 #include "ui/ui_style.h"
 
+#include <imgui_internal.h>
+
 #include <algorithm>
 #include <cctype>
 #include <cfloat>
@@ -31,7 +33,20 @@ void centeredText(ImDrawList *list, ImVec2 min, ImVec2 max, ImU32 color, const c
     list->AddText(ImVec2(std::floor((min.x + max.x - size.x) * 0.5f), std::floor((min.y + max.y - size.y) * 0.5f)),
                   color, text);
 }
+// Set by the controls that draw their own focus ring, for rowDetail().
+bool g_controlFocused = false;
+bool g_stacked = false;
+// Where a settings table ends (screen x): the help under a label runs to it.
+float g_tableRight = 0.0f;
 } // namespace
+
+bool navFocused() { return ImGui::IsItemFocused() && ImGui::GetCurrentContext()->NavCursorVisible; }
+
+void focusRing(ImDrawList *list, ImVec2 min, ImVec2 max, float rounding) {
+    // White, so it reads against the gold of a chosen segment or a switched-on toggle.
+    list->AddRect(ImVec2(min.x - 1.0f, min.y - 1.0f), ImVec2(max.x + 1.0f, max.y + 1.0f), palette::kText,
+                  rounding + 1.0f, 2.0f);
+}
 
 bool beginWindow(const char *name, bool *open, ImGuiWindowFlags flags) {
     const bool visible = ImGui::Begin(name, open, flags);
@@ -59,6 +74,10 @@ bool toggle(const char *id, bool *value) {
     list->AddRectFilled(min, max, mix(off, withAlpha(palette::kGold, 0.92f), t), height * 0.5f);
     list->AddRect(min, max, IM_COL32(255, 255, 255, 70), height * 0.5f, 1.0f);
     const float radius = height * 0.5f - 3.0f;
+    if (navFocused()) {
+        g_controlFocused = true;
+        focusRing(list, ImVec2(min.x - 1.0f, min.y - 1.0f), ImVec2(max.x + 1.0f, max.y + 1.0f), height * 0.5f);
+    }
     const ImVec2 knob(min.x + height * 0.5f + (width - height) * t, min.y + height * 0.5f);
     list->AddCircleFilled(ImVec2(knob.x, knob.y + 1.0f), radius, IM_COL32(0, 0, 10, 90));
     list->AddCircleFilled(knob, radius, mix(IM_COL32(205, 210, 230, 255), IM_COL32(255, 255, 255, 255), t));
@@ -69,17 +88,52 @@ bool segmented(const char *id, int *value, const char *const *labels, int count,
     ImGui::PushID(id);
     const float width = ImGui::GetContentRegionAvail().x;
     const float height = ImGui::GetFrameHeight();
+    const float padding = em(1.1f);
+    // Each choice needs its word and some air: equal segments when the
+    // longest fits in one, the words' own widths when not, and a drop-down
+    // when even those do not fit, so no word is ever cut.
+    float widest = 0.0f, total = 0.0f;
+    for (int index = 0; index < count; ++index) {
+        const float need = ImGui::CalcTextSize(labels[index]).x + padding;
+        widest = std::max(widest, need);
+        total += need;
+    }
+    const bool equal = widest * static_cast<float>(count) <= width;
+    if (!equal && total > width) {
+        ImGui::SetNextItemWidth(width);
+        bool changed = false;
+        if (ImGui::BeginCombo("##choice", labels[std::clamp(*value, 0, count - 1)])) {
+            for (int index = 0; index < count; ++index) {
+                const bool usable = !enabled || enabled[index];
+                ImGui::BeginDisabled(!usable);
+                if (ImGui::Selectable(labels[index], *value == index) && *value != index) {
+                    *value = index;
+                    changed = true;
+                }
+                ImGui::EndDisabled();
+            }
+            ImGui::EndCombo();
+        }
+        g_controlFocused = navFocused();
+        ImGui::PopID();
+        return changed;
+    }
+
     const ImVec2 pos = ImGui::GetCursorScreenPos();
     const float rounding = ImGui::GetStyle().FrameRounding;
     ImDrawList *list = ImGui::GetWindowDrawList();
     list->AddRectFilled(pos, ImVec2(pos.x + width, pos.y + height), IM_COL32(255, 255, 255, 16), rounding);
 
-    const float segment = width / static_cast<float>(count);
+    const float extra = equal ? 0.0f : (width - total) / static_cast<float>(count);
+    float left = 0.0f;
     bool changed = false;
     for (int index = 0; index < count; ++index) {
+        const float segment = equal ? width / static_cast<float>(count)
+                                    : ImGui::CalcTextSize(labels[index]).x + padding + extra;
         const bool chosen = *value == index;
         const bool usable = !enabled || enabled[index];
-        const ImVec2 at(pos.x + segment * index, pos.y);
+        const ImVec2 at(pos.x + left, pos.y);
+        left += segment;
         ImGui::SetCursorScreenPos(at);
         ImGui::PushID(index);
         ImGui::BeginDisabled(!usable);
@@ -88,6 +142,7 @@ bool segmented(const char *id, int *value, const char *const *labels, int count,
             changed = true;
         }
         const bool hovered = ImGui::IsItemHovered();
+        const bool focused = navFocused();
         ImGui::EndDisabled();
         ImGui::PopID();
 
@@ -97,6 +152,10 @@ bool segmented(const char *id, int *value, const char *const *labels, int count,
             list->AddRect(min, max, palette::kGold, rounding - 1.0f, 1.5f);
         } else if (hovered && usable) {
             list->AddRectFilled(min, max, palette::kHover, rounding - 1.0f);
+        }
+        if (focused) {
+            g_controlFocused = true;
+            focusRing(list, min, max, rounding - 1.0f);
         }
         const ImU32 color = chosen ? palette::kGold : usable ? palette::kText : withAlpha(palette::kTextMuted, 0.6f);
         list->PushClipRect(min, max, true);
@@ -115,7 +174,7 @@ void sectionHeader(const char *title) {
                    [](unsigned char letter) { return static_cast<char>(std::toupper(letter)); });
     ImGui::Dummy(ImVec2(0.0f, em(0.3f)));
     const float right = ImGui::GetCursorScreenPos().x + ImGui::GetContentRegionAvail().x;
-    ImGui::PushFont(nullptr, ImGui::GetStyle().FontSizeBase * 0.82f);
+    pushScaledFont(0.82f);
     ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(palette::kGold));
     ImGui::TextUnformatted(upper.c_str());
     ImGui::PopStyleColor();
@@ -127,48 +186,120 @@ void sectionHeader(const char *title) {
                                             withAlpha(palette::kGold, 0.28f), 1.0f);
 }
 
+bool beginSection(const char *title, bool defaultOpen) {
+    ImGui::PushID(title);
+    bool &open = *ImGui::GetStateStorage()->GetBoolRef(ImGui::GetID("##open"), defaultOpen);
+    const float height = em(1.9f);
+    const float width = ImGui::GetContentRegionAvail().x;
+    ImGui::Dummy(ImVec2(0.0f, em(0.15f)));
+    const ImVec2 pos = ImGui::GetCursorScreenPos();
+    if (ImGui::InvisibleButton("##section", ImVec2(width, height), ImGuiButtonFlags_EnableNav))
+        open = !open;
+    const bool hovered = ImGui::IsItemHovered();
+    const bool focused = navFocused();
+    ImDrawList *list = ImGui::GetWindowDrawList();
+    const float rounding = ImGui::GetStyle().FrameRounding;
+    if (hovered)
+        list->AddRectFilled(pos, ImVec2(pos.x + width, pos.y + height), palette::kHover, rounding);
+    if (focused)
+        focusRing(list, pos, ImVec2(pos.x + width, pos.y + height), rounding);
+    const float mid = pos.y + height * 0.5f;
+    const float half = em(0.28f);
+    const float cx = pos.x + em(0.8f);
+    if (open)
+        list->AddTriangleFilled(ImVec2(cx - half, mid - half * 0.6f), ImVec2(cx + half, mid - half * 0.6f),
+                                ImVec2(cx, mid + half * 0.7f), palette::kGold);
+    else
+        list->AddTriangleFilled(ImVec2(cx - half * 0.6f, mid - half), ImVec2(cx - half * 0.6f, mid + half),
+                                ImVec2(cx + half * 0.7f, mid), palette::kGold);
+    std::string upper(title);
+    std::transform(upper.begin(), upper.end(), upper.begin(),
+                   [](unsigned char letter) { return static_cast<char>(std::toupper(letter)); });
+    pushScaledFont(0.82f);
+    const ImVec2 text = ImGui::CalcTextSize(upper.c_str());
+    const float textX = pos.x + em(1.6f);
+    list->AddText(ImVec2(textX, std::floor(mid - text.y * 0.5f)), palette::kGold, upper.c_str());
+    ImGui::PopFont();
+    const float lineX = textX + text.x + em(0.6f);
+    if (lineX < pos.x + width)
+        list->AddLine(ImVec2(lineX, std::floor(mid) + 0.5f), ImVec2(pos.x + width, std::floor(mid) + 0.5f),
+                      withAlpha(palette::kGold, 0.28f), 1.0f);
+    ImGui::PopID();
+    return open;
+}
+
 bool beginSettings(const char *id) {
-    if (!ImGui::BeginTable(id, 2, ImGuiTableFlags_None))
-        return false;
     const float available = ImGui::GetContentRegionAvail().x;
-    ImGui::TableSetupColumn("label", ImGuiTableColumnFlags_WidthFixed,
-                            std::clamp(available * 0.38f, em(8.0f), em(15.0f)));
-    ImGui::TableSetupColumn("value", ImGuiTableColumnFlags_WidthStretch);
+    // Narrow pages put each control under its label instead of beside it.
+    g_stacked = available < em(24.0f);
+    g_tableRight = ImGui::GetCursorScreenPos().x + available;
+    // NoClip: the help under a label may run on under the control's column.
+    if (!ImGui::BeginTable(id, g_stacked ? 1 : 2, ImGuiTableFlags_NoClip))
+        return false;
+    if (!g_stacked) {
+        ImGui::TableSetupColumn("label", ImGuiTableColumnFlags_WidthFixed,
+                                std::clamp(available * 0.42f, em(9.0f), em(17.0f)));
+        ImGui::TableSetupColumn("value", ImGuiTableColumnFlags_WidthStretch);
+    }
     return true;
 }
 
-void settingRow(const char *label, const char *help, const char *chipText) {
-    ImGui::TableNextRow(ImGuiTableRowFlags_None, ImGui::GetFrameHeight() + em(0.35f));
+void settingRow(const char *label, const char *help, const char *chipText, bool changed) {
+    ImGui::TableNextRow(ImGuiTableRowFlags_None, g_stacked ? 0.0f : ImGui::GetFrameHeight() + em(0.35f));
     ImGui::TableNextColumn();
     ImGui::AlignTextToFramePadding();
     ImGui::TextUnformatted(label);
+    if (changed) {
+        // A gold dot: changed from the default (the page's footer says so).
+        const ImVec2 min = ImGui::GetItemRectMin(), max = ImGui::GetItemRectMax();
+        ImGui::GetWindowDrawList()->AddCircleFilled(ImVec2(max.x + em(0.55f), (min.y + max.y) * 0.5f), em(0.17f),
+                                                    palette::kGold);
+        ImGui::SameLine(0.0f, em(0.9f));
+    }
     if (chipText) {
-        ImGui::SameLine(0.0f, em(0.5f));
+        ImGui::SameLine(0.0f, changed ? 0.0f : em(0.5f));
         chip(chipText, palette::kWarn);
     }
     if (help) {
-        ImGui::PushFont(nullptr, ImGui::GetStyle().FontSizeBase * 0.84f);
+        pushScaledFont(0.84f);
         ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(palette::kTextMuted));
-        ImGui::PushTextWrapPos(0.0f);
+        ImGui::PushTextWrapPos(g_stacked ? 0.0f : g_tableRight - ImGui::GetWindowPos().x);
         ImGui::TextUnformatted(help);
         ImGui::PopTextWrapPos();
         ImGui::PopStyleColor();
         ImGui::PopFont();
     }
-    ImGui::TableNextColumn();
+    if (!g_stacked)
+        ImGui::TableNextColumn();
     ImGui::SetNextItemWidth(-FLT_MIN);
 }
 
 void endSettings() { ImGui::EndTable(); }
 
-bool navItem(const char *label, Icon kind, bool selected) {
-    const float height = em(2.3f);
+void rowDetail(const char *detail) {
+    const bool focused = g_controlFocused || navFocused();
+    g_controlFocused = false;
+    if (!detail || !*detail)
+        return;
+    if (!(focused || ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)))
+        return;
+    if (ImGui::BeginTooltip()) {
+        ImGui::PushTextWrapPos(em(26.0f));
+        ImGui::TextUnformatted(detail);
+        ImGui::PopTextWrapPos();
+        ImGui::EndTooltip();
+    }
+}
+
+bool navItem(const char *label, Icon kind, bool selected, bool compact) {
+    const float height = em(compact ? 2.0f : 2.3f);
     const float width = ImGui::GetContentRegionAvail().x;
     const ImVec2 pos = ImGui::GetCursorScreenPos();
     ImGui::PushID(label);
     const bool pressed = ImGui::InvisibleButton("##page", ImVec2(width, height), ImGuiButtonFlags_EnableNav);
     ImGui::PopID();
     const bool hovered = ImGui::IsItemHovered();
+    const bool focused = navFocused();
     const float y = pos.y + height * 0.5f;
 
     ImDrawList *list = ImGui::GetWindowDrawList();
@@ -178,12 +309,26 @@ bool navItem(const char *label, Icon kind, bool selected) {
         list->AddRectFilled(pos, max, IM_COL32(255, 255, 255, 20), rounding);
     else if (hovered)
         list->AddRectFilled(pos, max, palette::kHover, rounding);
+    if (focused)
+        focusRing(list, pos, max, rounding);
+    const ImU32 color = selected || hovered || focused ? palette::kText : palette::kTextMuted;
+    if (compact) {
+        // Icons only; the name shows on hover and focus.
+        drawIcon(list, kind, ImVec2(pos.x + width * 0.5f, y), em(1.2f), selected ? palette::kGold : color);
+        if (selected)
+            list->AddRectFilled(ImVec2(pos.x, pos.y + em(0.3f)), ImVec2(pos.x + 3.0f, max.y - em(0.3f)),
+                                palette::kGold, 2.0f);
+        if (hovered || focused)
+            ImGui::SetTooltip("%s", label);
+        return pressed;
+    }
     if (selected)
         drawCursor(list, ImVec2(pos.x + em(1.05f), y), em(0.62f));
-    const ImU32 color = selected || hovered ? palette::kText : palette::kTextMuted;
     drawIcon(list, kind, ImVec2(pos.x + em(2.05f), y), em(1.1f), selected ? palette::kGold : color);
     const ImVec2 text = ImGui::CalcTextSize(label);
+    list->PushClipRect(pos, max, true);
     list->AddText(ImVec2(pos.x + em(3.0f), std::floor(y - text.y * 0.5f)), color, label);
+    list->PopClipRect();
     return pressed;
 }
 
@@ -244,7 +389,7 @@ bool iconButton(const char *label, Icon kind, bool primary) {
 void keycap(const char *text) {
     // Laid out one frame tall, so it lines up with framed text beside it.
     const float frame = ImGui::GetFrameHeight();
-    ImGui::PushFont(nullptr, ImGui::GetStyle().FontSizeBase * 0.8f);
+    pushScaledFont(0.8f);
     const ImVec2 textSize = ImGui::CalcTextSize(text);
     const float height = std::floor(frame * 0.78f);
     const float width = std::max(height, textSize.x + em(0.8f));
@@ -264,7 +409,7 @@ void keycap(const char *text) {
 void chip(const char *text, ImU32 color) {
     // One frame tall, as keycap is, to line up with framed text beside it.
     const float frame = ImGui::GetFrameHeight();
-    ImGui::PushFont(nullptr, ImGui::GetStyle().FontSizeBase * 0.72f);
+    pushScaledFont(0.72f);
     const ImVec2 textSize = ImGui::CalcTextSize(text);
     const float height = std::floor(textSize.y + em(0.5f));
     const float width = std::floor(textSize.x + em(1.2f));

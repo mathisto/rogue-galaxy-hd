@@ -5,6 +5,8 @@
 
 #include <imgui.h>
 
+#include <algorithm>
+
 namespace dq8::ui {
 
 namespace palette {
@@ -44,6 +46,17 @@ void drawShadow(ImDrawList *list, ImVec2 min, ImVec2 max, float rounding, float 
 // The cursor: a white triangle pointing right with its tip at `tip`, nudged
 // back and forth the way the game's own cursor bobs.
 void drawCursor(ImDrawList *list, ImVec2 tip, float size, float alpha = 1.0f);
+
+// Pushes the font at `factor` of the base size, but never below 11 pixels on
+// screen, whatever the menu's size (the small text of help lines, keycaps and
+// chips would otherwise shrink under 11 px at the smallest menu sizes).
+inline void pushScaledFont(float factor) {
+    const ImGuiStyle &style = ImGui::GetStyle();
+    float size = style.FontSizeBase * factor;
+    if (factor < 1.0f)
+        size = std::max(size, 11.0f / std::max(style.FontScaleMain, 0.01f));
+    ImGui::PushFont(nullptr, size);
+}
 
 // Heights scale with the font: one "unit" is the current font size.
 inline float em(float units = 1.0f) { return ImGui::GetFontSize() * units; }

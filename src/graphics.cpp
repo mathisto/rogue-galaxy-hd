@@ -549,155 +549,182 @@ std::unique_ptr<dq8::ui::Overlay> createMenu(PS2Runtime &runtime, dq8::gfx::SdlG
     // it is paused.
     host.completedRenders = [] { return guestFlips(); };
     host.guestFrame = [] { return ps2PadCurrentGuestFrame(); };
-    // The game's own switches, on the menu's Game page, in its sections.
+    // The game's own switches, on the menu's Game page, in its sections. The
+    // help is one short line; the long explanation is in gameDetails below,
+    // shown as a tooltip. Menu UX pass: sections and order regrouped (the
+    // keys, and so settings.ini, are unchanged).
     host.gameOptions = {
+        // Camera and view
         {"sixty_fps", "60 frames per second",
+         "Twice the game's own 30. Takes effect at the next start.", true, 0, 0, 0, "", 1, true, true},
+        {"widescreen", "Widescreen", "A wider view that fills the window; menus stay 4:3.", false},
+        {"widescreen_menus", "Widescreen menus", "Full-screen menus: 4:3 with borders, or stretched wide.", false, 0,
+         1, 1, "", 1, true, false, {"Stretched", "4:3 pillarboxed"}},
+        {"field_of_view", "Field of view", "How wide the camera sees; the game's is 52 degrees.", false, 40, 90, 52,
+         "%d degrees", 2},
+        {"camera_distance", "Camera distance", "How far the camera stays from the party; 100% is the game's.", false,
+         70, 160, 100, "%d%%", 5},
+        {"faster_camera", "Faster camera rotation", "The stick turns the camera twice as fast.", false},
+        {"draw_distance", "Draw distance", "How far scenery is drawn; from the next map loaded.", false, 100, 400,
+         100, "%d%%", 25},
+        {"free_camera", "Free camera (F6)", "Fly the camera while the party stands still. Off at every start.",
+         false, 0, 0, 0, "", 1, false},
+        // Convenience
+        {"skip_opening", "Skip the opening", "Boot goes straight to the title screen.", false},
+        {"instant_loading_recap", "Show the loading recap at once",
+         "The story so far appears whole when a game loads.", false},
+        {"instant_text", "Instant text", "Dialogue a page at a time, not letter by letter.", false},
+        {"map_chests", "Chests on the map", "Unopened chests show on the explored parts of the map.", false},
+        {"fast_transporter", "Fast transporters", "Transporter warps play up to twice as fast.", false},
+        {"fast_revelation", "Fast Revelation Flow", "Revelation Flow animations play up to twice as fast.", false},
+        // Battles and rewards
+        {"encounter_rate", "Encounter rate", "How often random battles come; 0% turns them off.", false, 0, 300, 100,
+         "%d%%", 10},
+        {"battle_experience", "Experience from battles", "Experience a won battle gives; 100% is the game's.", false,
+         0, 500, 100, "%d%%", 25},
+        {"battle_money", "Money from battles", "Money defeated enemies leave; 100% is the game's.", false, 0, 500,
+         100, "%d%%", 25},
+        {"item_drops", "Item drops", "How likely enemies are to drop items; 100% is the game's.", false, 0, 1000,
+         100, "%d%%", 50},
+        {"shop_prices", "Shop prices", "What shops ask for their items; 100% is the game's.", false, 10, 200, 100,
+         "%d%%", 10},
+        {"action_gauge", "Action gauge speed", "How fast the action gauge refills in battle.", false, 25, 400, 100,
+         "%d%%", 25},
+        // Text and HD content
+        {"button_prompts", "Button prompts", "Which buttons the game's text shows.", false, 0, 2, 2, "", 1, true,
+         false, {"PlayStation", "Xbox", "Auto"}},
+        {"font_style", "Font", "Original, or a sharp modern font (Roboto, or your own).", false, 0, 1, 0, "", 1, true,
+         false, {"Original", "Modern"}},
+        {"hd_movies", "HD movies",
+         "Upscaled 1080p cutscenes: " + std::to_string(rg::hdmovie::fileCount()) + " of " +
+             std::to_string(rg::hdmovie::kMovieCount) + " found.",
+         rg::hdmovie::fileCount() > 0},
+        {"texture_replacements", "Texture replacements", "Off shows every texture as the game has it.", true},
+        // Advanced
+        {"texture_memory", "Texture pack memory", "Video memory an HD texture pack's pictures may take.", false, 512,
+         8192, 2048, "%d MB", 512},
+        {"dev_tools", "Developer tools", "Debug shortcuts the developers left in the game.", false},
+        // The Cheats page (docs/CHEATS.md): the master is off at every start
+        // (not remembered), the rest are remembered but act only with it on.
+        {"cheats_master", "Cheats on (F5)", "Off at every start. The game cannot save while this is on.", false, 0,
+         0, 0, "", 1, false},
+        {"cheat_hp", "Infinite HP", "Nobody in the party takes damage.", false},
+        {"cheat_ap", "Infinite AP", "AP stays full, so abilities cost nothing.", false},
+        {"cheat_gauge", "Full action gauge", "The action gauge stays full: every action is ready.", false},
+        {"cheat_onehit", "One-hit kills", "Every enemy, bosses included, goes down to its first hit.", false},
+        {"cheat_items", "Items are not used up", "Items used from the bag stay in it.", false},
+        {"cheat_money_hold", "Keep money at an amount", "Money is put back to the amount below whenever it differs.",
+         false},
+        {"cheat_money", "Amount", "The money kept, up to the game's 99,999,999.", false, 0, 99999999, 99999999,
+         "%d", 1000000},
+        {"cheat_max_money", "Money", "Sets money to the game's maximum, once.", false, 0, 0, 0, "Set to maximum", 1,
+         false, false, {}, true},
+    };
+    host.gameDetails = {
+        {"sixty_fps",
          "The game runs at 60 frames a second instead of its own 30, its logic still at the PS2's pace; movies "
-         "and the loading screen keep 30. Takes effect the next time the game starts.",
-         true, 0, 0, 0, "", 1, true, true},
-        {"widescreen", "Widescreen",
+         "and the loading screen keep 30. Takes effect the next time the game starts."},
+        {"widescreen",
          "The game draws a wider view, and the HUD over the scene and the movies fit it; with Display > Aspect "
          "ratio on Auto the picture fills the window, whatever its shape, once a game is loaded. Menus and text "
-         "are drawn for 4:3: see Widescreen menus.",
-         false},
-        {"widescreen_menus", "Widescreen menus",
+         "are drawn for 4:3: see Widescreen menus."},
+        {"widescreen_menus",
          "With Widescreen on, the full-screen menus (the main menu with items, equipment, status and Settings; "
          "save and transporter menus; factory, insect and ship menus), which the game draws for 4:3, are shown at "
-         "4:3 with Display > Borders around them. Stretched shows them as wide as the window, as before.",
-         false, 0, 1, 1, "", 1, true, false, {"Stretched", "4:3 pillarboxed"}},
-        {"field_of_view", "Field of view",
+         "4:3 with Display > Borders around them. Stretched shows them as wide as the window, as before."},
+        {"field_of_view",
          "How wide the camera sees while exploring and in battle, in degrees across a 4:3 picture (the game's is "
-         "52); a wide picture adds to it. Scenes keep their own camera.",
-         false, 40, 90, 52, "%d degrees", 2},
-        {"camera_distance", "Camera distance",
-         "How far the camera stays from the party, against the game's (100%).",
-         false, 70, 160, 100, "%d%%", 5},
-        {"faster_camera", "Faster camera rotation",
+         "52); a wide picture adds to it. Scenes keep their own camera."},
+        {"camera_distance", "How far the camera stays from the party, against the game's (100%)."},
+        {"faster_camera",
          "The stick turns the camera twice as fast, exploring, in battle and in the first-person view. Otherwise "
-         "it turns at the game's speed, at 60 frames a second as at 30.",
-         false},
-        {"draw_distance", "Draw distance",
+         "it turns at the game's speed, at 60 frames a second as at 30."},
+        {"draw_distance",
          "How far away the scenery and the objects are still drawn, against the game's (100%), the fog thinned "
-         "in step. Most of Salgin has no limit to raise; the open areas gain more. From the next map loaded.",
-         false, 100, 400, 100, "%d%%", 25},
-        {"free_camera", "Free camera (F6)",
+         "in step. Most of Salgin has no limit to raise; the open areas gain more. From the next map loaded."},
+        {"free_camera",
          "The camera leaves the party, which stands still, and the controller moves it: the left stick moves the "
          "point it looks at (Square held, faster; L2 held, up and down), the right stick turns it around that "
-         "point and tilts it (R2 held, nearer and farther). Turn it off, or press F6, to play again. Off at every "
-         "start.",
-         false, 0, 0, 0, "", 1, false},
-        {"skip_opening", "Skip the opening",
-         "At boot, the Sony and Level-5 logos and the opening movie give way to the title screen at once.", false},
-        {"hd_movies", "HD movies",
+         "point and tilts it (R2 held, nearer and farther). Turn it off, or press F6 or Start, to play again."},
+        {"skip_opening", "At boot, the Sony and Level-5 logos and the opening movie give way to the title screen at once."},
+        {"instant_loading_recap",
+         "When a game loads, the story so far appears whole instead of line by line, and Press X comes as soon as "
+         "it has loaded."},
+        {"instant_text",
+         "Dialogue and messages appear a page at a time instead of letter by letter, as the game itself does "
+         "where a scene asks for it; the pauses written into the text stay."},
+        {"map_chests",
+         "The chests not yet opened show on the maps in the parts you have explored, as the game shows them once "
+         "every save point of a planet is activated. Nothing is saved: the planet's own completion still comes."},
+        {"fast_transporter", "A transporter's warp plays at up to twice the speed. The music and the sounds keep their pace."},
+        {"fast_revelation",
+         "Items going into a Revelation Flow cell, the zoom, the glow and the ability won, play at up to twice "
+         "the speed."},
+        {"encounter_rate",
+         "How often random battles come, against the game's (100%); 0% turns them off. The story's battles stay."},
+        {"battle_experience",
+         "The experience a won battle gives, against the game's (100%), up to the game's 9999 a battle."},
+        {"battle_money",
+         "The money defeated enemies leave, against the game's (100%). Selling, chests and rewards stay as they are."},
+        {"item_drops",
+         "How likely defeated enemies are to leave each of their items, against the game's (100%): most have a 2 "
+         "to 10% chance, which 1000% makes 20 to 100%; 0% for none. A battle still gives three kinds of items at "
+         "most, as the game does."},
+        {"shop_prices",
+         "What shops ask for their items, against the game's (100%). Below 100% nothing sells for more than it "
+         "costs, so buying and selling back makes no money."},
+        {"action_gauge", "How fast the party's action gauge fills again in battle, against the game's (100%)."},
+        {"button_prompts",
+         "Xbox goes by position: Cross is A, Circle B, Square X, Triangle Y, L1 and R1 LB and RB, L2 and R2 LT "
+         "and RT. Auto shows PlayStation buttons for a PlayStation controller and Xbox ones otherwise. Buttons "
+         "painted into pictures (help pages, the loading screen) follow too."},
+        {"font_style",
+         "Modern draws the text in Roboto, or in the first .ttf or .otf in the fonts folder, sharp at the internal "
+         "resolution, and lines wrap to its letter widths; the menus' numbers and the compass letters too. Text "
+         "already on screen changes at its next page."},
+        {"hd_movies",
          "The cutscenes play from upscaled 1080p video files, one a movie in the HD movie folder (RG_HD_MOVIES, "
          "else textures/SCUS-97490/movies, as 00/TITLE01.mkv, 01/01_01.mkv ...), with the game's own sound and "
          "timing. A movie without a file, or one this PC cannot decode in time, plays as the game has it. On by "
-         "default when the folder holds files; found now: " +
-             std::to_string(rg::hdmovie::fileCount()) + " of " + std::to_string(rg::hdmovie::kMovieCount) + ".",
-         rg::hdmovie::fileCount() > 0},
-        {"instant_loading_recap", "Show the loading recap at once",
-         "When a game loads, the story so far appears whole instead of line by line, and Press X comes as soon as "
-         "it has loaded.",
-         false},
-        {"instant_text", "Instant text",
-         "Dialogue and messages appear a page at a time instead of letter by letter, as the game itself does "
-         "where a scene asks for it; the pauses written into the text stay.",
-         false},
-        {"map_chests", "Chests on the map",
-         "The chests not yet opened show on the maps in the parts you have explored, as the game shows them once "
-         "every save point of a planet is activated. Nothing is saved: the planet's own completion still comes.",
-         false},
-        {"fast_transporter", "Fast transporters",
-         "A transporter's warp plays at up to twice the speed. The music and the sounds keep their pace.", false},
-        {"fast_revelation", "Fast Revelation Flow",
-         "Items going into a Revelation Flow cell, the zoom, the glow and the ability won, play at up to twice "
-         "the speed.",
-         false},
-        {"encounter_rate", "Encounter rate",
-         "How often random battles come, against the game's (100%); 0% turns them off. The story's battles stay.",
-         false, 0, 300, 100, "%d%%", 10},
-        {"battle_experience", "Experience from battles",
-         "The experience a won battle gives, against the game's (100%), up to the game's 9999 a battle.",
-         false, 0, 500, 100, "%d%%", 25},
-        {"battle_money", "Money from battles",
-         "The money defeated enemies leave, against the game's (100%). Selling, chests and rewards stay as they are.",
-         false, 0, 500, 100, "%d%%", 25},
-        {"item_drops", "Item drops",
-         "How likely defeated enemies are to leave each of their items, against the game's (100%): most have a 2 "
-         "to 10% chance, which 1000% makes 20 to 100%; 0% for none. A battle still gives three kinds of items at "
-         "most, as the game does.",
-         false, 0, 1000, 100, "%d%%", 50},
-        {"shop_prices", "Shop prices",
-         "What shops ask for their items, against the game's (100%). Below 100% nothing sells for more than it "
-         "costs, so buying and selling back makes no money.",
-         false, 10, 200, 100, "%d%%", 10},
-        {"action_gauge", "Action gauge speed",
-         "How fast the party's action gauge fills again in battle, against the game's (100%).",
-         false, 25, 400, 100, "%d%%", 25},
-        {"button_prompts", "Button prompts",
-         "Which buttons the game's text shows. Xbox goes by position: Cross is A, Circle B, Square X, Triangle Y, "
-         "L1 and R1 LB and RB, L2 and R2 LT and RT. Auto shows PlayStation buttons for a PlayStation controller and "
-         "Xbox ones otherwise. Buttons painted into pictures (help pages, the loading screen) follow too.",
-         false, 0, 2, 2, "", 1, true, false, {"PlayStation", "Xbox", "Auto"}},
-        {"font_style", "Font",
-         "Modern draws the text in Roboto, or in the first .ttf or .otf in the fonts folder, sharp at the internal "
-         "resolution, and lines wrap to its letter widths; the menus' numbers and the compass letters too. Text "
-         "already on screen changes at its next page.",
-         false, 0, 1, 0, "", 1, true, false, {"Original", "Modern"}},
-        {"texture_replacements", "Texture replacements",
+         "default when the folder holds files."},
+        {"texture_replacements",
          "Off shows every texture as the game has it: no Xbox buttons, no modern font, and no texture pack from "
-         "textures/SCUS-97490/replacements. F8 reads the pack's folder again, for a pack being worked on.",
-         true},
-        {"texture_memory", "Texture pack memory",
+         "textures/SCUS-97490/replacements. F8 reads the pack's folder again, for a pack being worked on."},
+        {"texture_memory",
          "How much video memory a texture pack's pictures may take; the least recently seen give way to new "
          "ones, and as much again of main memory keeps pictures ready. Raise it if textures stay blurry after a "
-         "scene has loaded and the graphics card has room.",
-         false, 512, 8192, 2048, "%d MB", 512},
-        {"dev_tools", "Developer tools",
-         "The tools the developers left in the game, switched off for release. Main menu: R3 shows every item's "
-         "icon, R1 + R3 a list of them, and Cross gives one of the one picked. Help pages and info list: R1 + "
-         "Select unlocks every entry. Bestiary: Select fills it. Revelation Flow: R2 + Triangle gives one of each "
-         "item the picked cell asks for. Paused in a scene: Triangle + R1 + R2 ends it, also one the game would "
-         "not let you skip, which can leave the story out of order.",
-         false},
-        // The Cheats page (docs/CHEATS.md): the master is off at every start
-        // (not remembered), the rest are remembered but act only with it on.
-        {"cheats_master", "Cheats (master switch, F5)",
-         "Turns the cheats below on or off. Off at every start. While it is on the game cannot save, so a "
-         "save with cheated numbers in it cannot happen; the first time, a notice asks for a yes.",
-         false, 0, 0, 0, "", 1, false},
-        {"cheat_hp", "Infinite HP",
-         "The party takes no damage: HP never goes down, and tops up to full. A character who is already down "
-         "stays down.",
-         false},
-        {"cheat_ap", "Infinite AP", "AP stays full, so abilities cost nothing.", false},
-        {"cheat_gauge", "Full action gauge",
-         "The party's action gauge stays full, so every action is ready at once.", false},
-        {"cheat_onehit", "One-hit kills",
-         "Anything that is not a party member goes down to its first hit, bosses included.", false},
-        {"cheat_items", "Items are not used up",
+         "scene has loaded and the graphics card has room."},
+        {"dev_tools",
+         "Main menu: R3 shows every item's icon, R1 + R3 a list of them, and Cross gives one of the one picked. "
+         "Help pages and info list: R1 + Select unlocks every entry. Bestiary: Select fills it. Revelation Flow: "
+         "R2 + Triangle gives one of each item the picked cell asks for. Paused in a scene: Triangle + R1 + R2 "
+         "ends it, also one the game would not let you skip, which can leave the story out of order."},
+        {"cheats_master",
+         "Turns the cheats below on or off, F5 too. Off at every start. While it is on the game cannot save, so a "
+         "save with cheated numbers in it cannot happen; the first time, a notice asks for a yes."},
+        {"cheat_hp",
+         "HP never goes down, and tops up to full. A character who is already down stays down."},
+        {"cheat_onehit", "Anything that is not a party member goes down to its first hit, bosses included."},
+        {"cheat_items",
          "An item used from the bag in the field or in battle stays in the bag. Selling, discarding, combining "
-         "and the Revelation Flow still use items up.",
-         false},
-        {"cheat_money_hold", "Hold the money at an amount",
+         "and the Revelation Flow still use items up."},
+        {"cheat_money_hold",
          "The party's money is put back to the amount below whenever it differs, so spending costs nothing and "
-         "earning adds nothing.",
-         false},
-        {"cheat_money", "Amount to hold", "The money held, up to the game's 99,999,999.", false, 0, 99999999,
-         99999999, "%d", 1000000},
-        {"cheat_max_money", "Money", "Sets the party's money to the game's maximum, 99,999,999, once.", false, 0, 0,
-         0, "Set to maximum", 1, false, false, {}, true},
+         "earning adds nothing."},
+        {"cheat_max_money", "Sets the party's money to the game's maximum, 99,999,999, once. Needs Cheats on."},
     };
     host.gameSections = {
         {"sixty_fps", "Camera and view"},
         {"skip_opening", "Convenience"},
         {"encounter_rate", "Battles and rewards"},
-        {"button_prompts", "Text and prompts"},
-        {"dev_tools", "Developers"},
+        {"button_prompts", "Text and HD content"},
+        {"texture_memory", "Advanced"},
         {"cheats_master", "Master switch"},
         {"cheat_hp", "Battle"},
         {"cheat_items", "Items and money"},
     };
+    // These sections start folded; the others start open.
+    host.gameFolded = {"texture_memory"};
     // The game's own Settings screen shows them on pages of its own.
     for (const dq8::ui::GameOption &option : host.gameOptions)
     {

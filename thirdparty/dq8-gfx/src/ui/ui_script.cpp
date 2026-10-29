@@ -16,8 +16,13 @@
 namespace dq8::ui {
 extern std::string g_scrollToGameOption; // ui_pages.cpp
 extern float g_scrollPageTo;
+extern bool g_unfoldAll;
 extern float g_scrollPageInfo[2];
 namespace {
+// A "nav" press, let go a few frames later.
+int g_navFrames = 0;
+ImGuiKey g_navRelease = ImGuiKey_None;
+
 std::string joined(const std::vector<std::string> &words) {
     std::string text;
     for (const auto &word : words)
@@ -68,6 +73,8 @@ void Overlay::loadScript() {
 }
 
 void Overlay::runScript() {
+    if (g_navFrames > 0 && --g_navFrames == 0)
+        ImGui::GetIO().AddKeyAnalogEvent(g_navRelease, false, 0.0f);
     if (m_script.empty())
         return;
     const uint64_t frame = m_host.guestFrame ? m_host.guestFrame() : m_presents;
@@ -87,9 +94,9 @@ void Overlay::runStep(const ScriptStep &step, uint64_t frame) {
     const bool on = first != "off";
     std::fprintf(stderr, "[ui] script frame %llu, %.1f s: %s %s\n", static_cast<unsigned long long>(frame),
                  now() - m_scriptStart, command.c_str(), joined(step.arguments).c_str());
-    static constexpr const char *kPages[] = {"display", "sound", "controls", "game", "cheats", "interface"};
+    static constexpr const char *kPages[] = {"display", "sound", "controls", "game", "interface", "cheats"};
     static constexpr SettingsPage kPageValues[] = {SettingsPage::Display, SettingsPage::Sound, SettingsPage::Controls,
-                                                   SettingsPage::Game, SettingsPage::Cheats, SettingsPage::Interface};
+                                                   SettingsPage::Game, SettingsPage::Interface, SettingsPage::Cheats};
     static constexpr const char *kAspects[] = {"auto", "4:3", "16:9", "native", "stretch"};
     static constexpr gfx::SdlGpuAspect kAspectValues[] = {gfx::SdlGpuAspect::Auto, gfx::SdlGpuAspect::Standard,
                                                           gfx::SdlGpuAspect::Wide, gfx::SdlGpuAspect::Native,
@@ -119,6 +126,23 @@ void Overlay::runStep(const ScriptStep &step, uint64_t frame) {
     } else if (command == "scrollpage") {
         // "scrollpage 400" or "scrollpage end": the open page, by pixels.
         g_scrollPageTo = first == "end" ? 1.0e9f : static_cast<float>(std::atof(first.c_str()));
+    } else if (command == "unfold") {
+        // Every folded section shows its settings ("unfold on"/"unfold off").
+        g_unfoldAll = on;
+    } else if (command == "nav") {
+        // One press of a pad direction or button for the menu's own
+        // navigation: up, down, left, right, accept, cancel, l1, r1.
+        static constexpr const char *kNames[] = {"up", "down", "left", "right", "accept", "cancel", "l1", "r1"};
+        static constexpr ImGuiKey kKeys[] = {ImGuiKey_GamepadDpadUp,   ImGuiKey_GamepadDpadDown,
+                                             ImGuiKey_GamepadDpadLeft, ImGuiKey_GamepadDpadRight,
+                                             ImGuiKey_GamepadFaceDown, ImGuiKey_GamepadFaceRight,
+                                             ImGuiKey_GamepadL1,       ImGuiKey_GamepadR1};
+        for (size_t index = 0; index < sizeof(kKeys) / sizeof(kKeys[0]); ++index)
+            if (first == kNames[index]) {
+                ImGui::GetIO().AddKeyAnalogEvent(kKeys[index], true, 1.0f);
+                g_navRelease = kKeys[index];
+                g_navFrames = 4;
+            }
     } else if (command == "pageinfo") {
         std::fprintf(stderr, "[ui] page %d: scroll range %.0f px, visible %.0f px, window %.0fx%.0f\n",
                      static_cast<int>(m_page), g_scrollPageInfo[0], g_scrollPageInfo[1],

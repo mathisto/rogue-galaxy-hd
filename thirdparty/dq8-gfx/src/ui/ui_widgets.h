@@ -13,24 +13,41 @@ bool beginWindow(const char *name, bool *open, ImGuiWindowFlags flags);
 
 // An on/off switch.
 bool toggle(const char *id, bool *value);
-// A row of mutually exclusive choices, filling the width it is given.
+// A row of mutually exclusive choices, filling the width it is given: equal
+// segments, the words' own widths when those are uneven, a drop-down when
+// they do not fit.
 // `enabled` may be null; a disabled choice is shown but cannot be picked.
 bool segmented(const char *id, int *value, const char *const *labels, int count,
                const bool *enabled = nullptr);
 
+// True when the last item has keyboard or gamepad focus with the focus
+// cursor showing; the custom controls draw a white ring for it.
+bool navFocused();
+void focusRing(ImDrawList *list, ImVec2 min, ImVec2 max, float rounding);
+
 void sectionHeader(const char *title);
+// A section header that folds its settings away; returns whether it is open.
+// The state is kept for the session, `defaultOpen` the first time.
+bool beginSection(const char *title, bool defaultOpen = true);
 // A two-column table of settings: the label (with an optional chip such as
 // "Experimental" beside it, and help underneath) on the left, the control on
 // the right.
 bool beginSettings(const char *id);
-void settingRow(const char *label, const char *help = nullptr, const char *chipText = nullptr);
+// `changed` puts a gold dot after the label: not the default any more.
+// A page narrower than 24 em stacks each control under its label.
+void settingRow(const char *label, const char *help = nullptr, const char *chipText = nullptr,
+                bool changed = false);
 void endSettings();
+// After a row's control: the long explanation as a tooltip, on hover and on
+// keyboard or gamepad focus (the row's own help stays one short line).
+void rowDetail(const char *detail);
 // A small rounded label after the item before it, or on the next line when
 // it does not fit beside it. Call after SameLine().
 void chip(const char *text, ImU32 color);
 
 // The settings window's page list: the selected entry carries the cursor.
-bool navItem(const char *label, Icon icon, bool selected);
+// `compact` shows the icon only, for a narrow window.
+bool navItem(const char *label, Icon icon, bool selected, bool compact = false);
 // A menu entry that shows the triangle cursor when hovered or focused.
 bool menuItem(const char *label, const char *shortcut = nullptr, bool selected = false, bool enabled = true);
 // The same for an entry that opens a submenu; EndMenu() when it returns true.

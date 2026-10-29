@@ -561,7 +561,17 @@ void Overlay::updateScale() {
         if (density > 0.0f && scale > 0.0f)
             display = scale / density;
     }
-    const float scale = std::clamp(display * static_cast<float>(m_settings.uiScale) / 100.0f, 0.5f, 4.0f);
+    float scale = std::clamp(display * static_cast<float>(m_settings.uiScale) / 100.0f, 0.5f, 4.0f);
+    // A small window caps the menu's size so the settings window keeps at
+    // least 40 x 24 of its own font sizes (the font's base is 17): at the
+    // size asked for it would not fit, and the player could not reach the
+    // Menu size slider to undo it. Stepped, so a drag-resize does not
+    // rebuild the style every frame.
+    const ImVec2 view = ImGui::GetIO().DisplaySize;
+    if (view.x > 0.0f && view.y > 0.0f) {
+        const float fits = std::min(view.x / (40.0f * 17.0f), view.y / (24.0f * 17.0f));
+        scale = std::min(scale, std::max(0.75f, std::floor(fits * 20.0f) / 20.0f));
+    }
     if (std::fabs(scale - m_appliedScale) < 0.001f)
         return;
     applyStyle(scale);
@@ -684,7 +694,7 @@ void Overlay::drawMenuBar() {
                     ImGui::EndMenu();
                 }
             }
-            if (m_host.cheatsStatus && menuItem("Cheats", "F5", m_host.cheatsStatus() > 0))
+            if (m_host.cheatsStatus && menuItem("Cheats (master switch)", "F5", m_host.cheatsStatus() > 0))
                 toggleCheatsMaster();
             if (canPause() || canChangeSpeed() || m_host.cheatsStatus)
                 ImGui::Separator();
@@ -706,9 +716,8 @@ void Overlay::drawMenuBar() {
             ImGui::EndMenu();
         }
         if (beginMenu("Settings")) {
-            static constexpr const char *kPages[] = {"Display", "Sound", "Controls", "Game", "Cheats", "Interface"};
             for (int page = 0; page < static_cast<int>(SettingsPage::Count); ++page)
-                if (menuItem(kPages[page], nullptr, m_settingsOpen && m_page == static_cast<SettingsPage>(page)))
+                if (menuItem(kSettingsPageNames[page], nullptr, m_settingsOpen && m_page == static_cast<SettingsPage>(page)))
                     openSettings(static_cast<SettingsPage>(page));
             ImGui::EndMenu();
         }
@@ -997,7 +1006,12 @@ void Overlay::drawToasts() {
             icon(toast.icon, em(1.15f), withAlpha(palette::kGold, alpha));
             ImGui::SameLine(0.0f, em(0.6f));
             ImGui::AlignTextToFramePadding();
+            // Wrapped to the window, so a long message is never cut off.
+            const float room = std::max(em(8.0f), std::min(em(30.0f), viewport->WorkSize.x - em(6.0f)));
+            const float used = ImGui::CalcTextSize(toast.text.c_str(), nullptr, false, room).x;
+            ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + used + 1.0f);
             ImGui::TextUnformatted(toast.text.c_str());
+            ImGui::PopTextWrapPos();
             y += ImGui::GetWindowHeight() + em(0.5f);
         }
         ImGui::End();
