@@ -38,6 +38,10 @@ bool beginSettings(const char *id);
 void settingRow(const char *label, const char *help = nullptr, const char *chipText = nullptr,
                 bool changed = false);
 void endSettings();
+// Test aid (RG_UI_SCRIPT "rowcheck"): counts the rows laid out whose label,
+// badge, dot, help and control rectangles overlap, and logs each one.
+void rowCheck(bool on);
+void rowCheckReport(const char *where, int *checked = nullptr, int *overlapping = nullptr);
 // After a row's control: the long explanation as a tooltip, on hover and on
 // keyboard or gamepad focus (the row's own help stays one short line).
 void rowDetail(const char *detail);

@@ -665,7 +665,9 @@ void Overlay::drawGameOptions(bool cheats) {
         const bool changed = option.remembered && !option.action &&
                              (option.number() ? gameNumber(option) != option.defaultNumber
                                               : gameOption(option) != option.defaultValue);
-        settingRow(option.label.c_str(), option.help.empty() ? nullptr : option.help.c_str(), nullptr, changed);
+        // A switch that waits for a restart says so in a badge, not under its control.
+        settingRow(option.label.c_str(), option.help.empty() ? nullptr : option.help.c_str(),
+                   waitsForRestart(option) ? "Restart needed" : nullptr, changed);
         if (!g_scrollToGameOption.empty() && g_scrollToGameOption == option.key) {
             ImGui::SetScrollHereY(0.2f);
             g_scrollToGameOption.clear();
@@ -753,8 +755,6 @@ void Overlay::drawGameOptions(bool cheats) {
             markDirty();
         }
         rowDetail(detail);
-        if (waitsForRestart(option))
-            ImGui::TextColored(color(palette::kWarn), "Takes effect at the next start.");
     }
     if (table)
         endSettings();

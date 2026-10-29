@@ -7,6 +7,8 @@
 #include <SDL3/SDL.h>
 #include <imgui.h>
 
+#include "ui/ui_widgets.h"
+
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
@@ -126,6 +128,13 @@ void Overlay::runStep(const ScriptStep &step, uint64_t frame) {
     } else if (command == "scrollpage") {
         // "scrollpage 400" or "scrollpage end": the open page, by pixels.
         g_scrollPageTo = first == "end" ? 1.0e9f : static_cast<float>(std::atof(first.c_str()));
+    } else if (command == "rowcheck") {
+        // "rowcheck on" starts counting settings rows whose parts overlap;
+        // "rowcheck report NAME" logs the count since, and starts again.
+        if (first == "report")
+            rowCheckReport(step.arguments.size() > 1 ? step.arguments[1].c_str() : "rows");
+        else
+            rowCheck(on);
     } else if (command == "unfold") {
         // Every folded section shows its settings ("unfold on"/"unfold off").
         g_unfoldAll = on;

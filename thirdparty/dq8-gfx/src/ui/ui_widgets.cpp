@@ -9,6 +9,8 @@
 #include <cfloat>
 #include <cmath>
 #include <cstdarg>
+#include <cstdio>
+#include <set>
 #include <string>
 
 namespace dq8::ui {
@@ -244,37 +246,143 @@ bool beginSettings(const char *id) {
     return true;
 }
 
+// The row check (RG_UI_SCRIPT "rowcheck"): each settings row's label, badge,
+// dot, help and control rectangles are compared as the row is laid out, so a
+// layout that lets any of them overlap is counted and logged.
+namespace {
+struct Box {
+    ImVec2 min, max;
+    bool valid = false;
+};
+struct RowBoxes {
+    bool open = false;
+    std::string name;
+    Box label, badge, dot, help;
+    ImVec2 controlStart;
+};
+RowBoxes g_row;
+bool g_rowCheck = false;
+// Each row counts once, however many frames draw it.
+std::set<std::string> g_rowsSeen, g_rowsBad;
+
+Box lastItemBox() { return {ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), true}; }
+
+bool intersects(const Box &a, const Box &b) {
+    return a.valid && b.valid && a.min.x < b.max.x - 0.5f && b.min.x < a.max.x - 0.5f &&
+           a.min.y < b.max.y - 0.5f && b.min.y < a.max.y - 0.5f;
+}
+
+// Called once the row's control has been submitted (its last item is the
+// last thing the row drew): compares the row's parts.
+void finishRow() {
+    if (!g_row.open)
+        return;
+    g_row.open = false;
+    if (!g_rowCheck)
+        return;
+    Box control;
+    control.valid = !g_stacked;
+    control.min = g_row.controlStart;
+    const ImVec2 last = ImGui::GetItemRectMax();
+    control.max = ImVec2(std::max(last.x, control.min.x + 1.0f), std::max(last.y, control.min.y + 1.0f));
+    struct Part {
+        const char *name;
+        const Box *box;
+    };
+    const Part parts[] = {{"label", &g_row.label}, {"badge", &g_row.badge}, {"dot", &g_row.dot},
+                          {"help", &g_row.help},   {"control", &control}};
+    g_rowsSeen.insert(g_row.name);
+    bool bad = false;
+    for (int first = 0; first < 5; ++first)
+        for (int second = first + 1; second < 5; ++second)
+            if (intersects(*parts[first].box, *parts[second].box)) {
+                bad = true;
+                if (!g_rowsBad.count(g_row.name))
+                    std::fprintf(stderr, "[rowcheck] OVERLAP in \"%s\": %s and %s\n", g_row.name.c_str(),
+                             parts[first].name, parts[second].name);
+            }
+    if (bad)
+        g_rowsBad.insert(g_row.name);
+}
+} // namespace
+
+void rowCheck(bool on) {
+    g_rowCheck = on;
+    g_rowsSeen.clear();
+    g_rowsBad.clear();
+}
+
+void rowCheckReport(const char *where, int *checked, int *overlapping) {
+    const int rows = static_cast<int>(g_rowsSeen.size()), bad = static_cast<int>(g_rowsBad.size());
+    std::fprintf(stderr, "[rowcheck] %s: %d rows checked, %d overlapping\n", where, rows, bad);
+    if (checked)
+        *checked = rows;
+    if (overlapping)
+        *overlapping = bad;
+    g_rowsSeen.clear();
+    g_rowsBad.clear();
+}
+
 void settingRow(const char *label, const char *help, const char *chipText, bool changed) {
+    finishRow();
     ImGui::TableNextRow(ImGuiTableRowFlags_None, g_stacked ? 0.0f : ImGui::GetFrameHeight() + em(0.35f));
     ImGui::TableNextColumn();
+    g_row = RowBoxes{};
+    g_row.open = true;
+    g_row.name = label;
+
+    // The label's cell: a gutter on the left that holds the "changed" dot
+    // (always reserved, so labels line up), then the label, which wraps at
+    // the cell's right edge less a gap, then the badge beside it when it
+    // fits and under it when not, then the help on its own wrapped line.
+    const float gutter = em(1.0f);
+    const float cellRight = ImGui::GetCursorScreenPos().x + ImGui::GetContentRegionAvail().x;
+    const float wrapRight = cellRight - (g_stacked ? 0.0f : em(0.6f));
+    const float windowX = ImGui::GetWindowPos().x;
+    ImGui::Indent(gutter);
     ImGui::AlignTextToFramePadding();
+    ImGui::PushTextWrapPos(std::max(wrapRight, ImGui::GetCursorScreenPos().x + em(4.0f)) - windowX);
     ImGui::TextUnformatted(label);
+    ImGui::PopTextWrapPos();
+    g_row.label = lastItemBox();
     if (changed) {
-        // A gold dot: changed from the default (the page's footer says so).
-        const ImVec2 min = ImGui::GetItemRectMin(), max = ImGui::GetItemRectMax();
-        ImGui::GetWindowDrawList()->AddCircleFilled(ImVec2(max.x + em(0.55f), (min.y + max.y) * 0.5f), em(0.17f),
-                                                    palette::kGold);
-        ImGui::SameLine(0.0f, em(0.9f));
+        const float radius = em(0.17f);
+        const ImVec2 centre(g_row.label.min.x - gutter * 0.5f, g_row.label.min.y + ImGui::GetTextLineHeight() * 0.5f);
+        ImGui::GetWindowDrawList()->AddCircleFilled(centre, radius, palette::kGold);
+        g_row.dot = {ImVec2(centre.x - radius, centre.y - radius), ImVec2(centre.x + radius, centre.y + radius), true};
     }
     if (chipText) {
-        ImGui::SameLine(0.0f, changed ? 0.0f : em(0.5f));
+        pushScaledFont(0.72f);
+        const float chipWidth = std::floor(ImGui::CalcTextSize(chipText).x + em(1.2f));
+        ImGui::PopFont();
+        const float gap = em(0.5f);
+        if (g_row.label.max.x + gap + chipWidth <= wrapRight)
+            ImGui::SameLine(0.0f, gap);
         chip(chipText, palette::kWarn);
+        g_row.badge = lastItemBox();
     }
     if (help) {
         pushScaledFont(0.84f);
         ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(palette::kTextMuted));
-        ImGui::PushTextWrapPos(g_stacked ? 0.0f : g_tableRight - ImGui::GetWindowPos().x);
+        // Always on a line of its own, wrapped at the table's right edge.
+        ImGui::PushTextWrapPos(g_tableRight - windowX);
         ImGui::TextUnformatted(help);
         ImGui::PopTextWrapPos();
+        g_row.help = lastItemBox();
         ImGui::PopStyleColor();
         ImGui::PopFont();
     }
+    ImGui::Unindent(gutter);
     if (!g_stacked)
         ImGui::TableNextColumn();
+    g_row.controlStart = ImGui::GetCursorScreenPos();
     ImGui::SetNextItemWidth(-FLT_MIN);
 }
 
-void endSettings() { ImGui::EndTable(); }
+void endSettings() {
+    finishRow();
+    ImGui::EndTable();
+}
 
 void rowDetail(const char *detail) {
     const bool focused = g_controlFocused || navFocused();

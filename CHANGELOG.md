@@ -20,7 +20,9 @@
   icons, a small window caps Menu size so the menu fits, dialogs scroll,
   toasts wrap, small text stays at 11 px or more. Shortcuts: F6 and F8 added,
   Fullscreen one row. Cheats notice shorter and defaulting to "Keep cheats
-  off". Test aids: `RG_UI_SCRIPT` `scrollpage`, `pageinfo`, `unfold`, `nav`.
+  off". Test aids: `RG_UI_SCRIPT` `scrollpage`, `pageinfo`, `unfold`, `nav`, `rowcheck`.
+  Fixed: a row with the "changed" dot ran its help inline under the control,
+  and the Experimental badge overlapped the label.
 
 - Cheats: F1 > Settings > Cheats, behind a master switch (F5, Game > Cheats)
   that is off at every start, whatever settings.ini says. Infinite HP, infinite

@@ -137,6 +137,16 @@ Alternative; the cheats notice's Not now to Keep cheats off.
   crosses into the page without an extra press, the focused control has a
   white ring, the scroll follows it, and Esc or B backs out of the topmost
   thing first (cheats notice, About, Shortcuts, Settings, the menu).
+- A row never overlaps itself: the label sits after a fixed gutter that holds
+  the gold dot, wraps at the label column's edge, the badge (Experimental,
+  Restart needed) goes beside it when it fits and under it when not, the help
+  is always its own wrapped line under both, and the control starts in its own
+  column (or under the help when the page is narrower than 24 em). The layout
+  is in `settingRow`; `RG_UI_SCRIPT` `rowcheck` compares each row's rectangles
+  as it is drawn (134 distinct rows over every page and the About window): the
+  first version overlapped in 60 rows at 1280x720 with changed settings and
+  66 to 68 at Menu size 125% and 200%; now 0, at 1280x720, 1920x1080,
+  1280x960, 960x540, and 1125 px wide at Menu size 100, 125 and 200%.
 - Small text is never under 11 px on screen, whatever the Menu size.
 - Words: plain, one noun for one thing (Cheats on, Menu size, Auto
   resolution), no internal terms, Experimental chips kept as the project had
