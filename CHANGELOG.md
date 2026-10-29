@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+- Menu: the F1 menu was reviewed and regrouped (docs/MENU-DESIGN.md has the
+  critique and the old-to-new map; no setting or `settings.ini` key changed).
+  Nothing is cut off or out of reach any more, down to a 960 x 540 window
+  and Menu size 200%: a scaling-filter word was cut ("Supersample"), the
+  Shortcuts window ran off the screen, and the Game page was five to
+  twenty-four screens long. Pages: Display, Sound, Controls, Game,
+  Interface, Cheats (Cheats and Interface swapped). Settings are in sections
+  with one line of help under each, the long explanation on hover or focus,
+  the rarely used ones in a folded Advanced group (Display: auto-resolution
+  tuning, integer scaling, line blending; Game: texture pack memory,
+  developer tools); Back + Start moved to Controls; HD movies sits with the
+  text and HD options. A gold dot marks what is not the default and every
+  page ends with a two-step Restore defaults. Keyboard and controller: a
+  visible focus ring on every control, the d-pad goes from the page list
+  into the page, Esc/B backs out. A narrow window shows the page list as
+  icons, a small window caps Menu size so the menu fits, dialogs scroll,
+  toasts wrap, small text stays at 11 px or more. Shortcuts: F6 and F8 added,
+  Fullscreen one row. Cheats notice shorter and defaulting to "Keep cheats
+  off". Test aids: `RG_UI_SCRIPT` `scrollpage`, `pageinfo`, `unfold`, `nav`.
+
 - Cheats: F1 > Settings > Cheats, behind a master switch (F5, Game > Cheats)
   that is off at every start, whatever settings.ini says. Infinite HP, infinite
   AP, a full action gauge, one-hit kills, items that are not used up, the

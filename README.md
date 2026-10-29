@@ -65,13 +65,16 @@ The game window takes a keyboard or a gamepad (PlayStation layout).
 | R2 held: fast-forward | ` held (left of 1) |
 | L2: fast-forward on or off | F4 |
 
-**F1** (or the Guide button, or Back+Start) opens the menu: display, sound,
-controls, and the Game page with the options above. F11 or Alt+Enter
+**F1** (or the Guide button, or Back+Start) opens the menu: Display, Sound,
+Controls, Game (the options above, in sections), Interface and Cheats; every page has
+a Restore defaults button, and the things few players touch are in a folded
+Advanced group. F11 or Alt+Enter
 toggles fullscreen, F12 takes a screenshot, F5 the cheats master switch. While L2 and R2 run
 fast-forward, the game does not get them (F1 > Interface turns that off;
 the speed is chosen there too, from 1.5x to 8x or Max). The options are also on the
 game's own Settings screen (System > Settings, L1 and R1 to turn the page).
-See [docs/OPTIONS.md](docs/OPTIONS.md) for each one.
+See [docs/OPTIONS.md](docs/OPTIONS.md) for each one, and
+[docs/MENU-DESIGN.md](docs/MENU-DESIGN.md) for how the menu is laid out.
 
 <p align="center"><img src="docs/images/menu-game.jpg" width="70%" alt="The F1 menu's Game page"></p>
 

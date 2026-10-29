@@ -2,9 +2,20 @@
 
 <p align="center"><img src="images/menu-game.jpg" width="70%" alt="The F1 menu's Game page"></p>
 
-**F1** (or the Guide button, or Back+Start) opens the menu:
+**F1** (or the Guide button, or Back+Start) opens the menu. Its pages, in the
+order of the page list (L1 and R1 turn them): Display, Sound, Controls, Game,
+Interface, Cheats. Every page is one row pattern: the setting's name, its
+control, one line of help; a longer explanation shows when you hover a control
+or focus it with the keyboard or controller. A gold dot after a name means
+"not the default"; every page ends with a **Restore ... defaults** button
+(press it twice: the second press, within four seconds, does it). Things few
+players touch are in a folded **Advanced** group on the page. How and why it
+is laid out: [MENU-DESIGN.md](MENU-DESIGN.md).
 
-- **Display**: window or fullscreen, vertical sync, internal resolution
+
+- **Display** (Window, Picture, and a folded Advanced group with Auto
+  resolution's oversampling and highest scale, Integer scaling and Sharper
+  picture): window or fullscreen, vertical sync, internal resolution
   (1x to 8x, or **Auto**: the scale that gives at least the window's height
   in lines, times an oversampling of 1.0, 1.25 or 1.5, capped at 2x-8x,
   default 6x; 1080 lines take 3x, 1440 take 4x, 2160 take 5x; it follows
@@ -20,21 +31,25 @@
   4:3 picture (black, the picture blurred, or your own image from the
   `borders` folder).
 - **Sound**: volume and muting.
-- **Controls**: controller and keyboard remapping, dead zones.
-- **Game**: the game options below.
+- **Controls**: Devices (keyboard, controller, Back + Start opening the
+  menu), Sticks and triggers (dead zone, trigger press point, camera
+  inversion), and Button bindings (controller and keyboard remapping).
+- **Game**: the game options below, in sections.
+- **Interface**: the menu's size (a small window caps it so the menu fits),
+  notifications, pause and fast-forward (its speed: 1.5x, 2x, 3x, 4x, 8x or
+  Max, as fast as the PC goes; and whether L2 and R2 control it), the
+  frame-rate counter.
 - **Cheats**: trainer-style helpers behind a master switch, below.
-- **Interface**: the menu's size, notifications, pause and fast-forward
-  (its speed: 1.5x, 2x, 3x, 4x, 8x or Max, as fast as the PC goes; and
-  whether L2 and R2 control it), the frame-rate counter.
 
 | Key | Controller | |
 |---|---|---|
 | F2 | | Pause |
 | F3 | | Frame-rate counter |
 | F4 | L2 | Fast-forward on or off |
-| F5 | | Cheats master switch ([CHEATS.md](CHEATS.md)) |
+| F5 | | Cheats on or off, the master switch ([CHEATS.md](CHEATS.md)) |
 | ` (left of 1), held | R2, held | Fast-forward while held |
-| F6 | | Free camera |
+| F6 | Start, to leave | Free camera |
+| F8 | | Reload the texture pack |
 | F11 or Alt+Enter | | Fullscreen |
 | F12 | | Screenshot |
 
@@ -74,7 +89,6 @@ free camera keeps them either way.
 | Option | |
 |---|---|
 | Skip the opening | Straight to the title screen. |
-| HD movies | The cutscenes play from upscaled 1080p files in `textures\SCUS-97490\movies` (or the folder `RG_HD_MOVIES` names), with the game's own sound and timing; a movie without a file, or one the PC cannot decode in time, plays as the game has it. On by default only when the folder holds files (the option's help says how many of the 89 it found). [HD-MOVIES.md](HD-MOVIES.md) |
 | Show the loading recap at once | The story so far appears whole, and you can go on as soon as it has loaded. |
 | Instant text | Dialogue a page at a time instead of letter by letter. |
 | Chests on the map | Unopened chests show on the map in the parts explored. |
@@ -92,26 +106,28 @@ free camera keeps them either way.
 | Shop prices | 10% to 200%. |
 | Action gauge speed | 25% to 400%. |
 
-**Text and prompts** ([FONT-AND-PROMPTS.md](FONT-AND-PROMPTS.md))
+**Text and HD content** ([FONT-AND-PROMPTS.md](FONT-AND-PROMPTS.md))
 
 | Option | |
 |---|---|
 | Button prompts | PlayStation, Xbox (A, B, X, Y, LB, RB, LT, RT, by position: Cross is A), or Auto (the default: PlayStation buttons for a PlayStation controller, Xbox ones otherwise; a toast says which and why). Buttons painted into pictures (help pages, the loading screen, battle and menu sheets) follow too, with the controls boards' controller drawing as an Xbox-style pad, START/SELECT as Menu/View, the sticks and d-pad, and "START button" / "L3" words. |
 | Font | Original, or Modern: Roboto, or your own .ttf in the `fonts` folder, drawn sharp at the internal resolution; lines rewrap to its letter widths. The menus' numbers (play time, money, counts, levels, stats), the battle's damage numbers, HP/AP and results digits, and the compass letters too. |
+| HD movies | The cutscenes play from upscaled 1080p files in `textures\SCUS-97490\movies` (or the folder `RG_HD_MOVIES` names), with the game's own sound and timing; a movie without a file, or one the PC cannot decode in time, plays as the game has it. On by default only when the folder holds files (the option's help says how many of the 89 it found). [HD-MOVIES.md](HD-MOVIES.md) |
 | Texture replacements | On by default. Off shows every texture as the game has it: no Xbox buttons, no modern font, no texture pack. F8 reads the pack's folder again. |
-| Texture pack memory | 512 MB to 8 GB (default 2 GB): the video memory an HD texture pack may take; the least recently seen pictures give way ([TEXTURE-PACKS.md](TEXTURE-PACKS.md)). The pack's look (per-class upscale models) is chosen when it is built; `RG_TEXTURE_PACK=textures/SCUS-97490/x4plus-anime/replacements` runs the older all-x4plus-anime look. |
 
-**Developers**
+**Advanced** (folded until opened)
 
 | Option | |
 |---|---|
+| Texture pack memory | 512 MB to 8 GB (default 2 GB): the video memory an HD texture pack may take; the least recently seen pictures give way ([TEXTURE-PACKS.md](TEXTURE-PACKS.md)). The pack's look (per-class upscale models) is chosen when it is built; `RG_TEXTURE_PACK=textures/SCUS-97490/x4plus-anime/replacements` runs the older all-x4plus-anime look. |
 | Developer tools | What the developers left in the game. In the main menu: R3 shows every item (R1 + R3 as a list, Cross gives one), R1 + Select unlocks every help and info entry, Select fills the bestiary. R2 + Triangle on the Revelation Flow gives the items a cell needs. Triangle + R1 + R2, paused in a scene, skips it (this can break the story's order). |
 
 ## Cheats
 
 <p align="center"><img src="images/menu-cheats.jpg" width="70%" alt="The F1 menu's Cheats page"></p>
 
-Settings > Cheats, with a master switch (**F5**, or Game > Cheats) that is off
+Settings > Cheats, with a master switch (**F5**, or Game > Cheats; "Cheats on"
+on the page) that is off
 at every start. While it is on the game cannot save (a save made with cheated
 numbers is the one that gets corrupted; the save screen says "Save to file 1
 failed." and the card is not touched), and a badge in the picture's corner
@@ -125,8 +141,8 @@ says so. The first time it is turned on a notice asks for a yes
 | Full action gauge | The party's action gauge stays full. |
 | One-hit kills | Anything that is not a party member goes down to its first hit, bosses included. |
 | Items are not used up | Items used from the bag in the field or in battle stay in it. |
-| Hold the money at an amount | The money is put back to the amount below whenever it differs (0 to 99,999,999). |
-| Money: set to maximum | A button: 99,999,999, once. |
+| Keep money at an amount | The money is put back to the amount below whenever it differs (0 to 99,999,999). |
+| Money | A button, "Set to maximum": 99,999,999, once. |
 
 <p align="center">
   <img src="images/salgin-above.jpg" width="49%" alt="Salgin from above">
