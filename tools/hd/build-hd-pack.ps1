@@ -92,7 +92,7 @@ foreach ($a in $args) {
 $env:PYTHONPATH = $Libs
 $env:PYTHONNOUSERSITE = "1"
 $isEstimate = $forward -contains "--estimate"
-if (-not $isEstimate -and (Invoke-Quiet $python @("-c", "import numpy, PIL")) -ne 0)) {
+if ((-not $isEstimate) -and ((Invoke-Quiet $python @("-c", "import numpy, PIL")) -ne 0)) {
     Write-Host ""
     Write-Host "The builder needs two Python packages: numpy and Pillow (tools\hd\requirements.txt)." -ForegroundColor Yellow
     Write-Host "  They would be downloaded from pypi.org (about 40 MB) with pip into $Libs"
