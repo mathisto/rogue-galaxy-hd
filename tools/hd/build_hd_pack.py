@@ -39,6 +39,10 @@ import zipfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.abspath(os.path.join(HERE, '..', '..'))
+# numpy and Pillow, when Build-HD-Pack.bat installed them into toolchain/pylibs (the tools it starts get the same via PYTHONPATH).
+_LIBS = os.path.join(REPO, 'toolchain', 'pylibs')
+if os.path.isdir(_LIBS) and _LIBS not in sys.path:
+    sys.path.append(_LIBS)
 IS_WIN = os.name == 'nt'
 NO_WINDOW = 0x08000000
 BELOW_NORMAL = 0x00004000
