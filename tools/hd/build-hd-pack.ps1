@@ -25,11 +25,19 @@ function Stop-Build([string]$Text) {
     exit 1
 }
 
-function Test-Python([string]$Exe) {
+# Runs a native program and returns its exit code. Windows PowerShell 5.1 turns a native program's stderr output
+# into a terminating error under "Stop", so the preference is relaxed around the call.
+function Invoke-Quiet([string]$Exe, [string[]]$Arguments) {
+    $saved = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
     try {
-        & $Exe -c "import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)" 2>$null
-        return ($LASTEXITCODE -eq 0)
-    } catch { return $false }
+        & $Exe @Arguments 2>&1 | Out-Null
+        return $LASTEXITCODE
+    } catch { return 1 } finally { $ErrorActionPreference = $saved }
+}
+
+function Test-Python([string]$Exe) {
+    return ((Invoke-Quiet $Exe @("-c", "import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)")) -eq 0)
 }
 
 function Find-Python {
@@ -41,8 +49,11 @@ function Find-Python {
         $exe = $cmd.Source
         # Windows' own python.exe may be the Store's stand-in, which fails the version check.
         if ($name -eq "py") {
+            $ErrorActionPreference = "Continue"
             $real = & $exe -3 -c "import sys; print(sys.executable)" 2>$null
-            if ($LASTEXITCODE -eq 0 -and $real) { $exe = "$real".Trim() } else { continue }
+            $code = $LASTEXITCODE
+            $ErrorActionPreference = "Stop"
+            if ($code -eq 0 -and $real) { $exe = "$real".Trim() } else { continue }
         }
         if (Test-Python $exe) { return $exe }
     }
@@ -80,8 +91,7 @@ foreach ($a in $args) {
 # Python packages.
 $env:PYTHONPATH = $Libs
 $env:PYTHONNOUSERSITE = "1"
-& $python -c "import numpy, PIL" 2>$null
-if ($LASTEXITCODE -ne 0) {
+if ((Invoke-Quiet $python @("-c", "import numpy, PIL")) -ne 0) {
     Write-Host ""
     Write-Host "The builder needs two Python packages: numpy and Pillow (tools\hd\requirements.txt)." -ForegroundColor Yellow
     Write-Host "  They would be downloaded from pypi.org (about 40 MB) with pip into $Libs"
@@ -97,8 +107,7 @@ if ($LASTEXITCODE -ne 0) {
     if ($code -ne 0) {
         Stop-Build "Installing numpy and Pillow failed (pip code $code). Check the internet connection and run this again."
     }
-    & $python -c "import numpy, PIL" 2>$null
-    if ($LASTEXITCODE -ne 0) { Stop-Build "numpy and Pillow still cannot be imported from $Libs." }
+    if ((Invoke-Quiet $python @("-c", "import numpy, PIL")) -ne 0) { Stop-Build "numpy and Pillow still cannot be imported from $Libs." }
 }
 
 # The disc: Install.bat extracts it into disc\. Without it, ask for the image and extract it with the project's tool.
