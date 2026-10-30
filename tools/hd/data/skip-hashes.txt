@@ -1,0 +1,17 @@
+# Pictures the pipeline never upscales: 16-hex pixel hashes (sha1 of the decoded RGBA + size, first 16
+# characters; tim2_export.py's name for a picture). No pixels are stored here, only the names.
+#  - 9 pictures that are runtime water/lighting slots or the unused font16 pages, not art (2026-10-28);
+#  - 4 pictures that stay noise after the decoder fixes (random index maps / palettes the game replaces at run time).
+661be32aec176426
+0bd4155c6e1934e1
+4e048ad4bf384892
+e22bda06fb8f92fe
+433a6f954680c5b5
+d31a00c225ff192a
+cd8bd460102a4f3f
+3d1015feb45da19f
+9807dd6202d3884d
+9a94e220b06f6795
+57e87c628758bf07
+6b7d72fc4ccb7fcb
+5b4c41c09ad75232

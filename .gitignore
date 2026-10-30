@@ -37,3 +37,6 @@ Thumbs.db
 # The player's own images for the window's sides; only the note is kept.
 /borders/*
 !/borders/README.txt
+
+# HD pack builder: everything it makes from the disc (tools/hd, Build-HD-Pack.bat).
+/work/

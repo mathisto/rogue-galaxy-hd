@@ -1,0 +1,5 @@
+# Python packages of the HD pack builder (tools/hd). Nothing else is needed: the rest is the standard library.
+# Build-HD-Pack.bat installs them into toolchain\pylibs after asking (from pypi.org), so nothing is installed in Windows.
+# Tested with Python 3.12 and 3.13, numpy 2.5, Pillow 12.3.
+numpy>=1.26
+Pillow>=10.1
