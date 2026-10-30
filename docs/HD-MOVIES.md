@@ -55,7 +55,8 @@ textures\SCUS-97490\movies\99\STAFF_A.mkv
 
 That is the layout `tools/hd/rg_movies_batch.py` writes
 (`work\hd\movies\hd\<disc folder>\<name>.mkv`) and `Build-HD-Pack.bat` links
-into place; or copy its `hd` folder's contents there by hand, or point `RG_HD_MOVIES` at the folder (a path, or `0` to switch HD movies off for
+into place; or copy its `hd` folder's contents there by hand, or point
+`RG_HD_MOVIES` at the folder (a path, or `0` to switch HD movies off for
 a run, `1` for the default folder). The game opens a file the moment its
 movie starts, so files can be added while it runs.
 

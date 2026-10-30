@@ -64,7 +64,7 @@ Run through [`THIRD-PARTY-NOTICES.md`](../THIRD-PARTY-NOTICES.md) and these:
 1. `git status` shows nothing from `disc/`, `textures/`, `work/`, `toolchain/`.
 2. `git ls-files | rg -i "\.(iso|dat|hd6|mvi|mkv|tm2|tim2|pac|chr|img)$"` finds nothing.
 3. No personal paths (`C:\Users\<you>`), user names or e-mail addresses in the
-   files (`rg -i "C:\\\\Users|@gmail"`), and the project URLs in
+   files (`rg -i "C:.Users|@gmail"`; also `git log --format=%ae` for the e-mail in the commits), and the project URLs in
    `thirdparty/dq8-gfx/src/ui/ui_overlay.cpp` and `ui_pages.cpp` point to your fork.
 4. The README says what it should: no game data included, not affiliated.
 5. History: files you removed are still in older commits. If a game file was ever

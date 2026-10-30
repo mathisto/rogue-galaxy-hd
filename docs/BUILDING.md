@@ -86,6 +86,7 @@ VU0 alone), and CMake compiles every `build/vu-blocks/*.txt` it finds too
 | `setup.py` | `verify`, `extract`, `info`, `overlays`, `check`, `recompile`, `tools`, `build`, `install` (and `make-hashes`, `maps`, `vu1-manifest`, `vu-blocks-manifest` for maintainers) |
 | `CMakeLists.txt`, `src/` | The game executable: build of the generated trees, overlay manager (`src/overlay/`), call tracing (`src/debug/`), `main.cpp`; the Windows launcher, `Rogue Galaxy.exe` (`src/launcher/`) |
 | `config/SCUS_974.90/` | `hashes.json` (known-good dump), `overlays.toml` (MWo3 table, loader hook), `funcmap.toml` (map sources and corrections), `functions_<image>.csv` (function maps), `recomp/<image>.toml` (ps2_recomp configs, SDK bindings), `vu1-programs.txt` and `vu-blocks.txt` (VU1 and VU0 microcode locations) |
+| `Build-HD-Pack.bat`, `tools/hd/` | The HD texture pack and HD movie builder (optional, after the install): [HD-BUILD.md](HD-BUILD.md). Python only; downloads Real-ESRGAN and FFmpeg on request |
 | `tools/disc/iso9660.py` | Read-only ISO9660 reader for dual-layer PS2 DVDs |
 | `tools/mwo3/mwo3.py` | MWo3 overlay header parser, ELF cross-check, overlay-to-ELF wrapper |
 | `tools/funcmap/` | Function-map builder and the checks behind `setup.py check` |

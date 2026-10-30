@@ -382,6 +382,7 @@ function Main {
 
     Write-Step "Done"
     Write-Host "The game is $game"
+    Write-Host "Optional: Build-HD-Pack.bat builds HD textures and HD movies from your disc (docs/HD-BUILD.md)."
     if (-not $Yes -and (Confirm-Step "Put a shortcut to it on the desktop?")) {
         $shell = New-Object -ComObject WScript.Shell
         $link = $shell.CreateShortcut((Join-Path ([Environment]::GetFolderPath("Desktop")) "Rogue Galaxy.lnk"))
