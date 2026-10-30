@@ -88,10 +88,11 @@ foreach ($a in $args) {
     else { $forward += $a }
 }
 
-# Python packages.
+# Python packages (an estimate needs none).
 $env:PYTHONPATH = $Libs
 $env:PYTHONNOUSERSITE = "1"
-if ((Invoke-Quiet $python @("-c", "import numpy, PIL")) -ne 0) {
+$isEstimate = $forward -contains "--estimate"
+if (-not $isEstimate -and (Invoke-Quiet $python @("-c", "import numpy, PIL")) -ne 0)) {
     Write-Host ""
     Write-Host "The builder needs two Python packages: numpy and Pillow (tools\hd\requirements.txt)." -ForegroundColor Yellow
     Write-Host "  They would be downloaded from pypi.org (about 40 MB) with pip into $Libs"
@@ -112,7 +113,6 @@ if ((Invoke-Quiet $python @("-c", "import numpy, PIL")) -ne 0) {
 
 # The disc: Install.bat extracts it into disc\. Without it, ask for the image and extract it with the project's tool.
 $discOk = (Test-Path -LiteralPath (Join-Path $Root "disc\DATA0_0.DAT")) -and (Test-Path -LiteralPath (Join-Path $Root "disc\DATA0_1.DAT"))
-$isEstimate = $forward -contains "--estimate"
 if (-not $discOk -and -not ($forward -contains "--iso") -and -not $isEstimate) {
     Write-Host ""
     Write-Host "disc\ does not hold the extracted disc yet." -ForegroundColor Yellow
