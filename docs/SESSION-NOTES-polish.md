@@ -2,7 +2,7 @@
 
 Branch `feature/polish` (from `feature/hd-textures`), local commits only,
 nothing pushed. Screenshots (before/after): 
-`C:\Users\mathisto\projects\rogue-galaxy\research\assets\polish\`.
+`research\assets\polish\` (the author's notes, outside the repository).
 
 ## 1. Numerals (done, verified)
 

@@ -1,7 +1,7 @@
 """Find PlayStation button art in the exported UI textures (NCC, multi-scale).
 
-  THRESH=0.78 DIFF=0.15 python -I tools/rg_psart_scan.py <ui/all> <gaiji2.png> scan.csv [hash,...]
-  python -I tools/rg_psart_emit.py scan.csv <ui/all>/unique.csv src/button_art_table.inc tools/rg_psart_exclude.txt
+  THRESH=0.78 DIFF=0.15 python -I tools/hd/rg_psart_scan.py <ui/all> <gaiji2.png> scan.csv [hash,...]
+  python -I tools/hd/rg_psart_emit.py scan.csv <ui/all>/unique.csv src/button_art_table.inc tools/hd/rg_psart_exclude.txt
 
 <ui/all> is im3_export.py's UI export (research 11: png/<hash>.png, unique.csv
 with gs_key); gaiji2.png the game's gaiji sheet exported the same way. The

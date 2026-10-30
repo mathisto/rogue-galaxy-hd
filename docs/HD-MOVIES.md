@@ -22,6 +22,23 @@ The rectangle the game and `src/widescreen.cpp` compute for it is used as it
 is, so Display > Aspect ratio, Widescreen and Borders treat an HD movie as
 they treat the original.
 
+## Building them
+
+Run `Build-HD-Pack.bat` and choose **[2] movies** (or [3] for the textures too).
+For each of the 89 movies it decrypts the `.MVI` from `disc\MOVIE`, upscales
+every frame 2x with Real-ESRGAN (`realesr-animevideov3`), resamples to 1080p
+and encodes HEVC Main10 (NVENC when the graphics card has it, else x265),
+keeping the movie's sound; the files are written under `work\hd\movies\hd` and
+linked into `textures\SCUS-97490\movies`. It needs a Vulkan graphics card,
+FFmpeg (it asks before downloading one if none is on your PATH), and about
+11 GB; it took about 1.5 hours for all 89 on an RTX 5070 Ti. It can be stopped
+and run again (finished movies are skipped), `--gentle` keeps the PC usable,
+and `--limit-movies N` makes the N shortest only, to try it. A movie where no
+frame moves for 3 minutes (`--stall-timeout`; a hang was seen once, with
+Real-ESRGAN idle while a pipe stalled) has its processes stopped and is tried
+again, up to twice. Everything is in [HD-BUILD.md](HD-BUILD.md); the files are
+yours alone and are not to be shared ([SHARING.md](SHARING.md)).
+
 ## Setting it up
 
 Put the files in `textures\SCUS-97490\movies`, one folder a movie group, named
@@ -36,9 +53,9 @@ textures\SCUS-97490\movies\99\STAFF_A.mkv
 ...
 ```
 
-That is the layout `tools/rg_movies_batch.py` of the research folder writes
-(`hd\<disc folder>\<name>.mkv`); copy its `hd` folder's contents there, or
-point `RG_HD_MOVIES` at the folder (a path, or `0` to switch HD movies off for
+That is the layout `tools/hd/rg_movies_batch.py` writes
+(`work\hd\movies\hd\<disc folder>\<name>.mkv`) and `Build-HD-Pack.bat` links
+into place; or copy its `hd` folder's contents there by hand, or point `RG_HD_MOVIES` at the folder (a path, or `0` to switch HD movies off for
 a run, `1` for the default folder). The game opens a file the moment its
 movie starts, so files can be added while it runs.
 

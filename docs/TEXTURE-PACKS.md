@@ -6,7 +6,9 @@ textures of the maps, characters, items, effects and menus; this page says
 how to build one, install it, tune it and complete it.
 
 A pack is made from the game's own pictures, so it is yours to use and not
-to share or commit: the repository ignores `/textures/`.
+to share or commit: the repository ignores `/textures/` and `/work/`
+([SHARING.md](SHARING.md)). The repository holds the tools that build it from
+your own disc, and nothing of the game.
 
 ## Turning it on
 
@@ -48,17 +50,35 @@ with part of it in native resolution).
 
 ## Building the pack
 
-The tools are in the research folder's `tools\` (Python 3.12, numpy, Pillow):
+**One click:** run `Build-HD-Pack.bat` (after `Install.bat`) and choose **[1]
+textures**. It extracts the archives from `disc\`, decodes the pictures,
+computes the renderer's keys, upscales, builds the pack into
+`textures\SCUS-97490\replacements` and checks it. Options, time and disk, and
+what to do when it stops: [HD-BUILD.md](HD-BUILD.md). The rest of this page is
+what those steps do and how to run them one by one (Python 3.10 or later with
+numpy and Pillow; every tool is in `tools\hd\`).
 
 ```
-py -3.12 -I -X utf8 tools\rg_texkeys.py extracted2 keys.csv
-py -3.12 -I -X utf8 tools\rg_texpack.py build --keys keys.csv ^
-    --out Q:\projects\rogue-galaxy-recomp\textures\SCUS-97490\replacements ^
-    --extra Q:\work\rg-textures\ui\all\unique.csv=Q:\work\rg-textures\ui\upscaled ^
-    --extra "Q:\work\rg-textures\all3\manifest.csv=Q:\work\rg-textures\upscaled|x4plus-anime-extra|animevideov3-extra" ^
-    --clean
+py -3 -X utf8 tools\hd\extract.py disc work\hd\extracted
+py -3 -X utf8 tools\hd\tim2_export.py work\hd\extracted work\hd\tim2
+py -3 -X utf8 tools\hd\im3_export.py disc work\hd\im3 --scope all
+py -3 -X utf8 tools\hd\rg_texkeys.py work\hd\extracted work\hd\keys.csv
+    (build_hd_pack.py then merges tim2\ and im3\ into work\hd\all, classifies the
+     pictures with rg_flag_classes.py and upscales each class with rg_upscale_batch.py)
+py -3 -X utf8 tools\hd\rg_texpack.py build --keys work\hd\keys.csv ^
+    --out textures\SCUS-97490\replacements --upscaled work\hd\upscaled ^
+    --stubs work\hd\tim2\stubs.csv ^
+    --extra work\hd\im3\unique.csv=work\hd\upscaled --native item_icon --clean
 ```
 
+- `extract.py` reads `DATA0_0/1.DAT` through their `.HD6` indexes. The index
+  stores some files 512 bytes late (`--legacy` reproduces the old, wrong
+  offsets); with the fixed offsets it writes 18,931 entries, 2,240,810,404
+  bytes. `tim2_export.py` leaves out the ~1,130 "pictures" that are only
+  64-byte headers of runtime texture slots, and decodes the 8-bit pictures
+  stored linear (not GS-swizzled) the right way; `im3_export.py` reads the
+  menu art (IM3 containers) straight from the archive and gives each picture
+  the renderer's key.
 - `rg_texkeys.py` reads every TIM2 picture on the disc and computes the key
   the renderer gives it once the game has uploaded it, bit for bit:
   FNV-1a over the deswizzled indices (8-bit) or the packed nibbles (4-bit),
@@ -67,59 +87,56 @@ py -3.12 -I -X utf8 tools\rg_texpack.py build --keys keys.csv ^
   both keys; the runtime decides which one exists.
 - `rg_texpack.py build` names each upscale by those keys
   (`<texels>_<clut>_<W>x<H>_psm<NN>.png`) and hard-links it into the pack
-  (no space used; `--copy` to copy). It applies the decoder fixes
-  (`all2\old-set-actions.csv`: no header-only stubs, no mis-decoded linear
-  pictures), prefers the fixed and newly exported sets, merges the IM3 menu
-  art and the newly extracted pictures by their `gs_key`, and writes
-  `pack-manifest.csv` beside the folder. `--clean` removes only the files the
-  previous manifest lists, so learned files stay.
-- **Per-class models (the default since 2026-10-28).** The builder takes the
-  upscale `flagged-classes.csv` recommends for each picture: animevideov3
-  for effects (additive glows, sparks, slash trails: x4plus-anime made them
-  greener, bigger and starrier), foliage cut-outs and smooth clouds, and the
-  general `realesrgan-x4plus` model for the **stone_floor** class (paving,
-  cobbles, flagstones and brick: x4plus-anime drew a "cracked mosaic" of
-  invented lines on the side streets and flattened the mortar), the rest
-  x4plus-anime. The stone tiles are a hand-picked list
-  (`upscaled\stone-floor.txt`, 88 Salgin pictures chosen from contact
-  sheets of native against the three models; their x4plus upscales are in
-  `upscaled\x4plus\`). Effects among the newly extracted pictures (`all3`,
-  133) take `animevideov3-extra` by the same rule. `--no-flagged` builds the
-  old all-x4plus-anime pack (`--fallback-for-flagged` is still accepted).
-  Counts: 5,182 x4plus-anime, 2,836 + 12 + 133 animevideov3, 88 x4plus,
-  the rest menu art and the extra sets as before.
+  (no space used; `--copy` to copy). It skips the pictures that are not images
+  (`--stubs`), merges the IM3 menu art and the pictures found inside IM3
+  containers by their `gs_key` (`--extra`), and writes `pack-manifest.csv`
+  beside the folder. `--clean` removes only the files the previous manifest
+  lists, so learned files stay.
+- **Per-class models (the default since 2026-10-28).** `rg_flag_classes.py`
+  gives each picture a class and `build_hd_pack.py` upscales it with the model
+  that suits it: animevideov3 for effects (additive glows, sparks, slash
+  trails: x4plus-anime made them greener, bigger and starrier), foliage
+  cut-outs and smooth clouds, and the general `realesrgan-x4plus` model for
+  the **stone_floor** class (paving, cobbles, flagstones and brick:
+  x4plus-anime drew a "cracked mosaic" of invented lines on the side streets
+  and flattened the mortar), the rest x4plus-anime. The stone tiles are a
+  hand-picked list (`tools/hd/data/stone-floor.txt`, 88 Salgin pictures
+  chosen from contact sheets of native against the three models; hashes only).
+  IM3 pictures under `effect\` take animevideov3 by the same rule.
+  `rg_texpack.py build --no-flagged` builds the all-x4plus-anime pack of
+  before. The reference build (2026-10-28) had 5,182 x4plus-anime,
+  2,836 + 12 + 133 animevideov3 and 88 x4plus pictures, the rest menu art.
+- **fp16 blackouts.** Under ncnn's fp16 math x4plus-anime returns black or
+  dark pictures for about 130 bright textures whatever the tile size. The
+  builder finds them by colour drift (`rg_upscale_colorcheck.py`, over 25)
+  and uses the animevideov3 upscale for those.
 - Atlases: for the TIM2 names given with `--native NAME` (default
   `item_icon`, the icon sheet), the builder links the disc's own picture
-  beside the upscale as `native_<key>.png` (see Atlases below). A pack built
-  before this has none: link it by hand with
-  `mklink /h replacements\menu\native_a3d85cd21042528c_8cfb075b4730706f_1024x960_psm13.png Q:\work\rg-textures\ui\all\png\59f235aa3f748836.png`.
-  Older builds of the game skip the file (a misnamed file, logged once).
+  beside the upscale as `native_<key>.png` (see Atlases below). Older builds
+  of the game skip the file (a misnamed file, logged once).
 - `rg_texpack.py validate --keys keys.csv --pack DIR LOG...` reads logs made
   with `RG_TEXTURE_LOG=1` and reports how many of the textures the game built
   the pack names, with a list of the misses and why.
 
-Built 2026-10-28 from all four sources (primary set minus the decoder's
-rejects, the fixed set, the menu art, the newly extracted pictures): 11,055
-files (8,106 primary, 102 fixed, 2,509 newly extracted, 338 menu art), in
-2 s; plus 29 learned. The other agents' manifests write the PSM in decimal
-(`psm19` is T8): the builder converts their `gs_key`s to the renderer's hex
-names.
+The reference build (2026-10-28, from the primary set minus the decoder's
+rejects, the fixed set, the menu art and the newly extracted pictures) had
+11,055 files (8,106 primary, 102 fixed, 2,509 newly extracted, 338 menu art),
+built in 2 s once the upscales existed, plus 29 learned. The IM3 manifests
+write the PSM in decimal (`psm19` is T8): the builder converts their
+`gs_key`s to the renderer's hex names.
 
 ### Going back to the old look
 
-The pack before the per-class models (x4plus-anime everywhere) is kept
-beside the default one, as hard links (no space):
-`textures\SCUS-97490\x4plus-anime\replacements` (with the learned files).
-Start the game with
+To compare with the x4plus-anime-everywhere look of before the per-class
+models, build into another folder with `rg_texpack.py build --no-flagged
+--out textures\SCUS-97490\x4plus-anime\replacements ...` (it hard-links the
+same upscales) and start the game with
 
 ```
 set RG_TEXTURE_PACK=textures/SCUS-97490/x4plus-anime/replacements
 ```
 
-for that look; without the variable the default pack is used. To make it
-the default again, rebuild with `--no-flagged` (the index of the pack as it
-was is saved as `textures\SCUS-97490\pack-manifest.before-polish2.csv`).
-Comparison crops and in-game pairs: `research\assets\polish-2\01-*`.
+Without the variable the default pack is used.
 
 ### Validation (2026-10-28)
 
@@ -156,7 +173,9 @@ and every texture the pack did not cover is written there once, as a PNG
 named by its key (frame copies and textures of one colour are skipped). Then
 
 ```
-py -3.12 -I -X utf8 tools\rg_texlearn.py C:\somewhere\learned textures\SCUS-97490\replacements
+py -3 -X utf8 tools\hd\rg_texlearn.py C:\somewhere\learned textures\SCUS-97490\replacements ^
+    --source work\hd\all\png=work\hd\upscaled\x4plus-anime,work\hd\upscaled\animevideov3 ^
+    --realesrgan toolchain\realesrgan
 ```
 
 links the upscale of any disc picture with the same pixels, and upscales the
@@ -248,14 +267,14 @@ before (49.4 against 49.9 fps, hidden window at 4x beside another game).
 rest of the menus: crisp, bold outlines, but metal blades and coins lose
 their shading to flat black and white, colours get more saturated and a few
 fine icons are redrawn (a snake staff's coils). Two other upscales of the
-sheet sit beside it in `Q:\work\rg-textures\ui\upscaled`: `x4plus\` (the
-general model: keeps the shading and colours, sharpest, a little grain) and
-`animevideov3\` (softest, closest to the native colours, some blur).
-Crops: `research\assets\hd-icons\06-models-*.png`. To try one, replace the
-pack file's link (the key stays the same):
-`del replacements\menu\a3d85cd21042528c_8cfb075b4730706f_1024x960_psm13.png`
-then `mklink /h` it to `Q:\work\rg-textures\ui\upscaled\x4plus\59f235aa3f748836.png`,
-and F8 in the game.
+sheet can be made for taste: with the `x4plus` model (the general one: keeps
+the shading and colours, sharpest, a little grain) and with `animevideov3`
+(softest, closest to the native colours, some blur) -- run
+`tools\hd\rg_upscale_batch.py --model realesrgan-x4plus --only LIST ...` on the
+sheet's picture (its pixel hash is `59f235aa3f748836`; the picture is in
+`work\hd\all\png\`). To try one, replace the pack file's link (the key stays
+the same): `del replacements\menu\a3d85cd21042528c_8cfb075b4730706f_1024x960_psm13.png`
+then `mklink /h` it to the new upscale, and F8 in the game.
 
 `RG_TEXTURE_LOG=1` logs `composed at 4x from its atlas`, `atlas block WxH at
 X,Y: found at X,Y`, `atlas cells ... composed again` and the palette

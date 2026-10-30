@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- HD pack builder: `Build-HD-Pack.bat` builds the HD texture pack and the
+  89 HD movies from your own disc in one go (docs/HD-BUILD.md). The tools that
+  used to live outside the repository are in `tools/hd/` (the archive
+  extractor with the 512-byte offset fix, the TIM2 and IM3 exporters, the
+  renderer-key computation, the per-class upscaler, the pack builder, the
+  movie batch with a stall watchdog, the PlayStation-art scanner), without
+  any user path. The builder shows a menu (textures, movies, both), the
+  disk space and time it needs, a `--gentle` mode, resumes where it stopped,
+  keeps a log, and downloads Real-ESRGAN (and FFmpeg when there is none) only
+  after showing the address and asking, checking a pinned SHA-256.
+  `--limit N` / `--limit-movies N` make a quick trial. Publishing: THIRD-PARTY-NOTICES.md,
+  docs/SHARING.md (what may and may not be shared), README notice and FAQ.
+
 - Menu: the F1 menu was reviewed and regrouped (docs/MENU-DESIGN.md has the
   critique and the old-to-new map; no setting or `settings.ini` key changed).
   Nothing is cut off or out of reach any more, down to a 960 x 540 window
@@ -113,7 +126,7 @@
   `textures\SCUS-97490\replacements`, named by texture hash
   (`RG_TEXTURE_LOG=1`); docs/FONT-AND-PROMPTS.md.
 - HD texture packs: a pack of the AI-upscaled (4x) textures can be built
-  from your disc with the research tools and dropped in that folder
+  from your disc with the tools in `tools/hd` and dropped in that folder
   (docs/TEXTURE-PACKS.md). Pictures are read in the background on first use
   (the game's texture shows meanwhile), kept under a memory budget (F1 >
   Game > Texture pack memory, 2 GB by default), shared on the GPU, given

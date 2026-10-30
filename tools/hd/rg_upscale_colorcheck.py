@@ -39,7 +39,8 @@ def main():
         w.writerows(res)
     print('over', thr, ':', sum(1 for r in res if r[1] > thr), 'of', len(res))
     for r in res[:12]:
-        print(r)
+        if r[1] > thr:
+            print(r)
 
 
 if __name__ == '__main__':

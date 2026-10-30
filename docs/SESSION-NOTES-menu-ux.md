@@ -7,7 +7,7 @@ map, rules). Test build `build\game-dev\rg-menuux.exe` (the new menu; the
 aids, which is this branch's first commit, `ce7de3e`, and was deleted
 afterwards). `build\game` was relinked from this branch (no `roguegalaxy.exe` was
 running when it was). Screenshots, `before_` and `after_`:
-`C:\Users\mathisto\projects\rogue-galaxy\research\assets\menu-ux\`.
+`research\assets\menu-ux\` (the author's notes, outside the repository).
 
 ## What changed (code)
 
@@ -39,7 +39,7 @@ running when it was). Screenshots, `before_` and `after_`:
 - Docs: OPTIONS.md, README, CHANGELOG, DEVELOPMENT.md (the new script
   commands), MENU-DESIGN.md, `docs/images/menu-game.jpg` and `menu-cheats.jpg`
   (new menu), the research cheat sheet (also copied to
-  `C:\Users\mathisto\projects\rogue-galaxy\research\06-controls-cheatsheet.md`).
+  `research\06-controls-cheatsheet.md` (the author's notes, outside the repository)).
 
 ## Test method
 

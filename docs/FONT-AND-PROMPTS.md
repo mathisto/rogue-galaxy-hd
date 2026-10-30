@@ -58,7 +58,7 @@ pack's upscale of the picture): the loading recap's "Press (X)", the pause
 screen's "(#): Go back to title", the battle sheet's (#)/(^) and L1/L2
 pills, the item menu's and save screens' L1/R1, and the help boards' buttons
 (System > Help). Where they are is a table, `src/button_art_table.inc`,
-written by `tools/rg_psart_scan.py` (a template match of `gaiji2`'s own
+written by `tools/hd/rg_psart_scan.py` (a template match of `gaiji2`'s own
 icons against the UI textures exported by `im3_export.py`; boxes only, no
 art). See [SESSION-NOTES-polish.md](SESSION-NOTES-polish.md) for what it
 covers.
@@ -81,7 +81,7 @@ same table also holds:
 
 The extra boxes come from the scanner with more templates (`EXTRA=`, cut
 from the game's pictures and kept outside the repository) and from
-`tools/rg_psart_manual.txt` (measured by hand); `tools/rg_psart_emit.py
+`tools/hd/rg_psart_manual.txt` (measured by hand); `tools/hd/rg_psart_emit.py
 --base` adds them to the table. Still the game's: the movie pause's "START
 button: Continue" (drawn from another picture), icons in styles the match
 misses (hb0011's large R1, hb0312's tabs, the factory's `Fac_ope01a`), the

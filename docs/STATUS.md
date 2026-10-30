@@ -1284,7 +1284,7 @@ disc (nothing of the game distributed). A clone of the pushed repository
 (d59ebcf), built by the README's steps, found:
 - A deep folder breaks the toml11 download (one of its test submodules
   passes Windows' 260-character path limit): the installer needs a short
-  path or long paths on. Built again in `F:\rgclean`.
+  path or long paths on. Built again in `a clean folder`.
 - The README built the recompiler before anything applied
   patches/ps2recomp (the game's configure did), so patch 0017 was missing
   from it: three generated functions (the VU0 box tests) came out without
@@ -1327,7 +1327,7 @@ disc (nothing of the game distributed). A clone of the pushed repository
   again skips what is done. The downloads themselves are for the user to
   try (I do not fetch executables); the rest ran end to end with the local
   tools (`-UseToolsOnPath`, PATH cut to them and Windows): the archive
-  unpacked at a 66-character path, copied itself to `F:\RogueGalaxy` and
+  unpacked at a 66-character path, copied itself to `a short path` and
   went from the ISO to the game in 11 minutes, extraction included; its
   walk `inst1` is byte-identical to `mods30c`.
 - `setup.py install` stopped ignoring a failed recompile, and redoes an

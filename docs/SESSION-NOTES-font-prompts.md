@@ -32,7 +32,7 @@ commits only, nothing pushed. User-facing description:
    Wrapping: the recap's lines break in the same places as with the game's
    font (`03-loading-recap.png`).
 
-Screenshots (before | after): `C:\Users\mathisto\projects\rogue-galaxy\research\assets\font-prompts\`
+Screenshots (before | after): `research\assets\font-prompts\` (the author's notes, outside the repository)
 (01 to 14; the "after" of 06, 07 and 09 predates the name page, see 13 for
 the name font modern). Taken in hidden runs at 2x, scratch settings, a copy
 of the card.

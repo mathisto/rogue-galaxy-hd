@@ -85,7 +85,7 @@ Sharpening still applies after it. When the window is the larger it falls
 back to bilinear. Settings file `filter = supersample`, `RG_UI_SCRIPT`
 `filter supersample`. Not the default: next to Smooth the difference is real
 but small in still pictures (railings, signs and the menus' thin rules come
-out cleaner, with less stair-stepping; `research\assets\polish\04-downscale-*`),
+out cleaner, with less stair-stepping),
 and it costs two passes reading up to 2 x 16 texels a pixel at 8x.
 
 ## ReShade and RenderDoc

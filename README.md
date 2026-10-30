@@ -5,6 +5,14 @@ static recompilation of the USA release (SCUS-97490), built on
 [PS2Recomp](https://github.com/ran-j/PS2Recomp). You build it from your own
 disc image; nothing of the game is distributed.
 
+> **No game data is included, and this project is not affiliated with, or
+> endorsed by, Level-5, Sony or any other rights holder.** "Rogue Galaxy" and
+> everything in the game belong to them. This repository holds source code,
+> tools and documentation only: no disc image, no BIOS, no extracted file, no
+> texture pack, no movie. You need your own copy of the game, and everything
+> made from it (the extracted disc, the HD textures, the HD movies) stays on
+> your PC; see [docs/SHARING.md](docs/SHARING.md).
+
 <p align="center">
   <img src="docs/images/salgin-plaza.jpg" width="49%" alt="Salgin in widescreen">
   <img src="docs/images/battle.jpg" width="49%" alt="A battle in Salgin">
@@ -46,6 +54,20 @@ and your own image of the disc: Rogue Galaxy, USA, SCUS-97490
    disc and builds the game. Nothing is installed in Windows.
 5. Play with `Rogue Galaxy.exe`.
 
+### HD textures and HD movies (optional)
+
+After `Install.bat`, double-click **`Build-HD-Pack.bat`**. It builds, from your
+own disc, the 4x AI-upscaled texture pack and the 89 upscaled 1080p cutscenes
+and puts them where the game looks for them: choose **[1] textures**, **[2]
+movies** or **[3] both**. It shows what it will do, the disk space and the
+time first (on the author's RTX 5070 Ti: textures about 20 to 30 minutes, the
+movies about 1.5 hours; a weaker graphics card takes several times longer),
+needs a Vulkan graphics card (NVIDIA, AMD or Intel Arc) and about 11 GB for
+each, asks before it downloads anything (Real-ESRGAN, 45 MB; FFmpeg, 110 MB,
+only if you have none), can be stopped and run again where it left off, and
+has a `--gentle` mode that keeps the PC usable. Details, options and
+troubleshooting: [docs/HD-BUILD.md](docs/HD-BUILD.md).
+
 If it stops, `install.log` says why; running `Install.bat` again continues
 where it stopped. If an antivirus removes the compiler, restore it and run
 it again. To uninstall, delete the folder (your saves are in `disc\mc0`).
@@ -86,10 +108,17 @@ See [docs/OPTIONS.md](docs/OPTIONS.md) for each one, and
   in the game, what was verified, and why saving is blocked while they are on
 - [docs/FONT-AND-PROMPTS.md](docs/FONT-AND-PROMPTS.md): button prompts, the
   modern font, texture replacement packs
-- [docs/TEXTURE-PACKS.md](docs/TEXTURE-PACKS.md): HD texture packs: building,
-  installing, tuning, learn mode
+- [docs/HD-BUILD.md](docs/HD-BUILD.md): `Build-HD-Pack.bat`: the one-click
+  HD textures and movies builder, its options, steps, and what to do when it
+  stops
+- [docs/TEXTURE-PACKS.md](docs/TEXTURE-PACKS.md): HD texture packs: how they
+  work, tuning, learn mode
 - [docs/HD-MOVIES.md](docs/HD-MOVIES.md): HD cutscenes: the folder, the file
   layout, how they play and fall back
+- [docs/SHARING.md](docs/SHARING.md): what may and may not be shared (code and
+  tools yes; texture packs, movies, extracted data no)
+- [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md): the licences of everything
+  this builds on
 - [docs/BUILDING.md](docs/BUILDING.md): building by hand, and the project's layout
 - [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md): the debug launchers, profiling and
   the environment variables
@@ -98,8 +127,59 @@ See [docs/OPTIONS.md](docs/OPTIONS.md) for each one, and
 ## Legal
 
 You must own the game. No game data, BIOS or disc-derived files are part of
-this repository: `disc/` and disc images are gitignored and must never be
-committed.
+this repository: `disc/`, disc images, `textures/` (the HD packs), `work/`
+(what the HD builder makes) and `toolchain/` are gitignored and must never be
+committed or shared ([docs/SHARING.md](docs/SHARING.md)). This is an
+independent fan project, not affiliated with, authorised or endorsed by
+Level-5, Sony Computer Entertainment or Sony Interactive Entertainment.
+
+## FAQ
+
+**Is the game included?** No. You build it from your own disc image
+(`Install.bat`); nothing of the game is in this repository or its releases.
+
+**Can I download the HD texture pack or the HD movies?** No, and nobody can
+offer them: they are the game's own pictures and movies, scaled up, so sharing
+them is sharing the game. `Build-HD-Pack.bat` makes them on your PC from your
+disc ([docs/SHARING.md](docs/SHARING.md) says why).
+
+**Which disc works?** The USA release, SCUS-97490, the Redump image of
+6,967,721,984 bytes ([docs/DISC.md](docs/DISC.md)). `Install.bat` checks the
+size and the hashes.
+
+**Do I need a good graphics card?** To play, any recent Vulkan card. To *build*
+the HD pack you need an NVIDIA, AMD or Intel Arc card with a current driver: the
+upscaler runs on it. On the author's RTX 5070 Ti the textures take about 20 to 30
+minutes and the movies about 1.5 hours.
+
+**It says "no usable Vulkan graphics card".** Update the graphics driver. On a
+laptop with two chips make Windows use the faster one for the builder
+(Settings > System > Display > Graphics), or pass `--gpu N`. Without a card
+the game still plays; it just has no HD pack.
+
+**The builder stopped or I closed the window.** Run `Build-HD-Pack.bat` again:
+finished steps and finished movies are skipped. The log is
+`work\hd\build.log`; docs/HD-BUILD.md lists what each message means.
+
+**Can I use the PC while it builds?** Yes with `Build-HD-Pack.bat --gentle`
+(lowest priority, one upscaler thread set). It is slower.
+
+**Is the HD pack the same for everyone?** Yes: the models, the classes and the
+steps are fixed, so the same disc gives the same pictures (the AI model's
+output can differ in the last bit between graphics cards and drivers).
+
+**Where do the files go, and how do I get rid of them?** The pack:
+`textures\SCUS-97490\replacements`; movies: `textures\SCUS-97490\movies`; the
+builder's work files: `work\hd` (about 20 GB; the builder offers to delete them
+when it finishes). Delete the folders to go back to the original look.
+
+**Is it safe to download the tools it asks for?** It shows each address and
+SHA-256 first, asks, and refuses a file that does not match. Real-ESRGAN and
+FFmpeg are put in `toolchain\` and not installed in Windows.
+
+**Can I publish a fork?** Yes: the code is GPL-3.0. Do not commit anything from
+`disc\`, `textures\` or `work\`. [docs/SHARING.md](docs/SHARING.md) has a
+checklist, and [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) the licences.
 
 ## Credits
 
@@ -112,11 +192,16 @@ committed.
   the menu is drawn with, and its Roboto Medium font (Apache 2.0), also the
   modern in-game font, rasterised with Dear ImGui's copy of
   [stb_truetype](https://github.com/nothings/stb) (public domain / MIT).
+- [Real-ESRGAN](https://github.com/xinntao/Real-ESRGAN) (BSD-3-Clause) and its
+  ncnn-vulkan build, which the HD builder downloads on request to upscale the
+  pictures and movies, and [FFmpeg](https://ffmpeg.org) for the movies.
 - [RGDecomp](https://github.com/Dorgengoa/RGDecomp) (CC0), the function maps
   and names for this build (`config/SCUS_974.90/functions_*.csv` derive from
   it).
 - [Redump](http://redump.org/disc/6567/) and [PCSX2](https://github.com/PCSX2/pcsx2)
   (GameDB, patches) for disc and hardware notes.
+
+The full list with licences is in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 
 ## License
 

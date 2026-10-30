@@ -2,7 +2,7 @@
 
 Branch `feature/polish-2` (from `feature/hd-icons`), local commits only,
 nothing pushed. Screenshots and before/after sheets:
-`C:\Users\mathisto\projects\rogue-galaxy\research\assets\polish-2\`.
+`research\assets\polish-2\` (the author's notes, outside the repository).
 Test build `build\game-dev\rg-polish2.exe` (`rg-polish2-base.exe` = the
 branch's start); the player's `build\game\src\roguegalaxy.exe` was running
 throughout and was not relinked.
@@ -24,7 +24,7 @@ throughout and was not relinked.
   "crack" lines and smooths mortar; animevideov3 is soft and smeary;
   **x4plus** (general model) keeps stone shapes, mortar and the native
   colours. Upscaled with the local RealESRGAN (`rg_upscale_batch.py --model
-  realesrgan-x4plus --only`, 10 s) into `Q:\work\rg-textures\upscaled\x4plus\`;
+  realesrgan-x4plus --only`, 10 s) into `work\hd\upscaled\x4plus\`;
   list in `upscaled\stone-floor.txt`; `rg_flag_classes.py` reads it
   (backups `*.orig-2026-10-28`, `flagged-classes.csv.bak-2026-10-28`).
 - **The player's pack** rebuilt by the builder (hard links): 11,055 files,
@@ -49,7 +49,7 @@ the body, never drawn over the boards' figures or lettering), `Menu`, `View`,
 picture's lettering redrawn in Roboto in its colours: "START" -> "MENU",
 "L3"/"R3" -> "LS"/"RS", "Press the START button" -> "Press the Menu button").
 Boxes: `rg_psart_scan.py` with `EXTRA=` templates (start/select/dpad/stick
-cut from Loading_TGS, kept in `Q:\work\rg-textures\ui\psart-templates`, not
+cut from Loading_TGS, kept in `the author's work folder (templates cut from the game's pictures, not in the repository)`, not
 in the repo; scan csv beside them) plus `tools/rg_psart_manual.txt`;
 `rg_psart_emit.py --base` merges into the existing table (149 boxes, 46
 pictures). Offline checks with a small harness compiling `hd_art.cpp` alone.

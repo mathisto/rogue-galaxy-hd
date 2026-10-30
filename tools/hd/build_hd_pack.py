@@ -63,9 +63,9 @@ FFMPEG = dict(
 REFERENCE = dict(pictures=11200, movies=89)
 GB_TEXTURES = 11     # extracted archives 2.3, decoded pictures 1.5, upscales about 6, working copies; the pack itself is hard links
 GB_MOVIES = 11       # decrypted movies 1.6, HEVC results 7, frames in flight 1.5; the published files are hard links
-EST_TEXT = ('about 1 to 2 hours of PC work, then about 30 to 60 minutes of GPU work',
-            'the author\'s RTX 5070 Ti: see docs/HD-BUILD.md for the measured steps')
-EST_MOVIES = ('about 1.5 hours', 'the author\'s RTX 5070 Ti; the 89 movies are about 5 hours of film at 30 fps')
+EST_TEXT = ('about 20 to 30 minutes: about 5 of preparation, then about 15 to 25 of upscaling',
+            "the author's RTX 5070 Ti")
+EST_MOVIES = ('about 1.5 hours', "the author's RTX 5070 Ti; the 89 movies are about 5 hours of film at 30 fps")
 
 LOG_PATH = None
 CHILDREN = set()
@@ -473,7 +473,7 @@ def print_plan(env, mode, a):
         say('  movies   : %s' % EST_MOVIES[0])
     say('  An older or smaller graphics card takes several times longer. --gentle lowers the priority (slower, quieter).')
     if a.limit or a.limit_movies:
-        say('  TRIAL RUN: only %s pictures and %s movies are processed (the pack is then tiny).' % (a.limit or 'all', a.limit_movies or 'all'))
+        say('  TRIAL RUN: %s, %s (the pack is then tiny).' % ('%d pictures' % a.limit if a.limit else 'all pictures', '%d movies' % a.limit_movies if a.limit_movies else 'all movies'))
     say()
     say('Steps (finished ones are skipped; state in %s):' % env.p('state.json'))
     names = [('extract', 'extract the archives'), ('tim2', 'decode TIM2 pictures'), ('im3', 'decode IM3 menu art'),

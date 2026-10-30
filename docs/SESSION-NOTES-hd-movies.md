@@ -4,7 +4,7 @@ Branch `feature/hd-movies` (from `feature/polish-2`), local commits only,
 nothing pushed. User docs: [HD-MOVIES.md](HD-MOVIES.md). Research and the
 upscale pipeline: `research\16-hd-cutscenes.md` (the design of section 8 is
 what was built, with the corrections below). Screenshots:
-`C:\Users\mathisto\projects\rogue-galaxy\research\assets\hd-movies-ingame\`.
+`research\assets\hd-movies-ingame\` (the author's notes, outside the repository).
 Test build `build\game-dev\rg-hdmovies.exe`; the player's
 `build\game\src\roguegalaxy.exe` was running throughout and was not relinked
 (its objects in `build\game` are now this branch's: `cmake --build build\game`
@@ -119,7 +119,7 @@ not block).
 
 `build\game-dev\rg-hdmovies.exe` from the repository folder, `RG_SETTINGS_FILE`
 and `RG_MC0_DIR` in the session scratchpad, `DQ8_GFX_HIDDEN_WINDOW=2`,
-`RG_MUTE=1`, `RG_TEXTURE_REPLACEMENTS=0`, `RG_HD_MOVIES=Q:\work\rg-movies\hd`,
+`RG_MUTE=1`, `RG_TEXTURE_REPLACEMENTS=0`, `RG_HD_MOVIES=work\hd\movies\hd`,
 `RG_INPUT_FILE` appended to step by step (`UP`, `CROSS`, `START:20`, `shot`);
 `RG_HD_MOVIES_SHOT_AT` for screenshots at a picture number. Frame
 identification: each screenshot cropped to the picture and compared (MSE at

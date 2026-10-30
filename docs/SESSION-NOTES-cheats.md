@@ -4,7 +4,7 @@ Branch `feature/cheats` (from `feature/hd-movies`), local commits only, nothing
 pushed. User docs: [CHEATS.md](CHEATS.md). Test build
 `build\game-dev\rg-cheats.exe`; no `roguegalaxy.exe` was running when
 `build\game` was relinked (it now holds this branch). Screenshots:
-`C:\Users\mathisto\projects\rogue-galaxy\research\assets\cheats\`.
+`research\assets\cheats\` (the author's notes, outside the repository).
 
 ## What was built
 

@@ -2,7 +2,7 @@
 
 Branch `feature/hd-icons` (from `feature/polish`), local commits only,
 nothing pushed. User-facing description: [TEXTURE-PACKS.md](TEXTURE-PACKS.md)
-(Atlases). Screenshots: `C:\Users\mathisto\projects\rogue-galaxy\research\assets\hd-icons\`.
+(Atlases). Screenshots: `research\assets\hd-icons\` (the author's notes, outside the repository).
 
 ## What was found (hidden runs, `RG_TEXTURE_LOG=1`, learn mode)
 
@@ -37,7 +37,7 @@ nothing pushed. User-facing description: [TEXTURE-PACKS.md](TEXTURE-PACKS.md)
   (default `item_icon`) links the disc picture beside the upscale. The
   user's pack got the file by hand (`keys.csv` of the last build is gone; a
   test build of the menu-art set into scratch produced the same file).
-- **Alternative upscales** of the sheet for taste: `Q:\work\rg-textures\ui\upscaled\x4plus\`
+- **Alternative upscales** of the sheet for taste: `work\hd\upscaled\x4plus\`
   and `animevideov3\` (`rg_upscale_batch.py --only`), 2-4 s of GPU each.
 
 ## Verified

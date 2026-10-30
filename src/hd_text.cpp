@@ -115,7 +115,7 @@ constexpr DigitSheet kDigitSheets[] = {
 };
 
 // PlayStation buttons drawn into pictures: where, by picture
-// (tools/rg_psart_scan.py finds them; button_art_table.inc is its output).
+// (tools/hd/rg_psart_scan.py finds them; button_art_table.inc is its output).
 struct ButtonSheet
 {
     uint64_t texels;
