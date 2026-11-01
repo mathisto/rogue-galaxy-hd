@@ -248,11 +248,12 @@ class App:
             r = tk.Frame(f, bg=BG)
             r.pack(fill='x', pady=(self.s(2), 0))
             rb = ttk.Radiobutton(r, text=self.cat('preset.' + name), value=name, variable=self.preset_var,
-                                 command=lambda n=name: self.choose_preset(n), width=12)
+                                 command=lambda n=name: self.choose_preset(n), width=15)
             rb.pack(side='left')
             d = self.label(r, self.cat('preset.' + name + '.desc'), fg=MUTED, font=self.f_small, wrap=False)
             d.pack(side='left')
             self.preset_widgets[name] = (rb, d)
+        self.gpu_note = self.label(f, '', fg=BAD, font=self.f_small)
         self.parts_toggle = self.button(f, self.cat('ui.parts_custom'), self.toggle_parts, 'Link.TButton')
         self.parts_toggle.pack(anchor='w', pady=(self.s(6), 0))
         self.parts_box = tk.Frame(f, bg=BG)
@@ -319,7 +320,7 @@ class App:
             blocked = c in gone and not installed
             if blocked:
                 reason_id, params = gone[c]
-                desc.configure(text=cat('ui.part_no_vulkan' if reason_id == 'warn.hd_no_vulkan' else 'ui.part_no_gpu', **params), fg=BAD)
+                desc.configure(text=cat('ui.part_unavailable'), fg=BAD)         # the reason is under the presets, once
             else:
                 desc.configure(text='', fg=MUTED)
             if installed:
@@ -337,6 +338,13 @@ class App:
             blocked = any(c in gone and c not in self.installed_parts for c in planmod.PRESETS[name])
             rb.state(['disabled' if blocked else '!disabled'])
             d.configure(text=cat('ui.part_unavailable') if blocked else cat('preset.' + name + '.desc'), fg=BAD if blocked else MUTED)
+        left_out = [c for c in gone if c not in self.installed_parts]
+        if left_out:
+            reason_id, params = gone[left_out[0]]
+            self.gpu_note.configure(text=cat('ui.part_no_vulkan' if reason_id == 'warn.hd_no_vulkan' else 'ui.part_no_gpu', **params))
+            self.gpu_note.pack(anchor='w', padx=(self.s(4), 0), pady=(self.s(4), 0), before=self.parts_toggle)
+        else:
+            self.gpu_note.pack_forget()
         if self.form.preset not in planmod.PRESETS or any(
                 c in gone and c not in self.installed_parts for c in planmod.PRESETS.get(self.form.preset, ())):
             fallback = next((n for n in ('recommended', 'faithful') if not any(
