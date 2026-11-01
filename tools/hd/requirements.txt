@@ -1,5 +1,6 @@
 # Python packages of the HD pack builder (tools/hd). Nothing else is needed: the rest is the standard library.
 # Build-HD-Pack.bat installs them into toolchain\pylibs after asking (from pypi.org), so nothing is installed in Windows.
-# Tested with Python 3.12 and 3.13, numpy 2.5, Pillow 12.3.
+# Pillow 13.0.0 or later: older releases have known critical vulnerabilities (fixed in 13.0.0, 2026-10-16).
+# Tested with Python 3.12 and 3.13, numpy 2.5; Pillow 13.0.0 is checked by tests/e2e_setup.py.
 numpy>=1.26
-Pillow>=10.1
+Pillow>=13.0.0

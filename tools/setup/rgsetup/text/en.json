@@ -39,6 +39,7 @@
   "msg.start": "Rogue Galaxy Recompiled {release} setup, into {dest}",
   "msg.plan_components": "Installing: {components}.",
   "msg.plan_download": "Download {name} ({mb} MB) from {url} into {dest}. It must have the SHA-256 {sha256}, or it is thrown away. Licence: {license}.",
+  "msg.plan_nothing": "Everything chosen is already in place; nothing to do.",
   "msg.plan_run": "Steps to do: {steps}.",
   "msg.plan_disk": "Disk space needed: {need}; {final} stays when the temporary files are gone.",
   "msg.plan_disk_hd": "Disk space needed: {need} (the HD builder alone peaks at {peak}); {final} stays when the temporary files are gone.",

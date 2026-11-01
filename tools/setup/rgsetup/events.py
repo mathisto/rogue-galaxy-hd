@@ -130,14 +130,17 @@ class Reporter:
             lines.append('  ' + render(c, 'msg.plan_download', {
                 'name': d['name'], 'mb': round(d['bytes'] / 1e6), 'url': d['url'], 'sha256': d['sha256'],
                 'license': d['license'], 'dest': d['dest']}))
-        if e.get('run'):
-            lines.append('  ' + render(c, 'msg.plan_run', {'steps': ', '.join(render(c, 'step.' + s) for s in e['run'])}))
+        todo = [s for s in e.get('run', []) if s not in ('check', 'finish')]
+        if todo:
+            lines.append('  ' + render(c, 'msg.plan_run', {'steps': ', '.join(render(c, 'step.' + s) for s in todo)}))
+        else:
+            lines.append('  ' + render(c, 'msg.plan_nothing'))
         d = e.get('disk')
-        if d:
+        if d and d['need'] and todo:
             params = {'need': human_bytes(d['need']), 'peak': human_bytes(d['peak_hd']), 'final': human_bytes(d['final'])}
             lines.append('  ' + render(c, 'msg.plan_disk_hd' if d['peak_hd'] else 'msg.plan_disk', params))
         t = e.get('time')
-        if t:
+        if t and t['minutes_max'] and todo:
             lines.append('  ' + render(c, 'msg.plan_time', {'min': t['minutes_min'], 'max': t['minutes_max']}))
         return '\n'.join(lines)
 

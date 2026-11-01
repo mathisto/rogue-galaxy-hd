@@ -1,52 +1,32 @@
-# Rogue Galaxy Recompiled: the installer behind Install.bat.
+# Rogue Galaxy Recompiled: the launcher behind Install.bat.
 #
-# Builds the game on this PC from the player's own disc image. It downloads
-# pinned build tools into toolchain\ (nothing is installed in Windows, and
-# each archive must match its SHA-256 below), asks for the disc image, and
-# runs `python setup.py install`: verify the image, extract it, build the
-# recompiler, recompile, build the game. Everything it writes stays in this
-# folder; run it again after a failure and what is done is skipped.
+# The work is done by the setup program, tools\setup\rgsetup (python -m rgsetup; docs\INSTALLER.md). This script only
+# finds Python (downloading the pinned one into toolchain\ when this PC has none), asks which disc image to use,
+# starts the setup with the old Install.bat's choices (the game only), and offers a desktop shortcut afterwards.
+# Install.bat always built just the game; the HD textures and movies come from Build-HD-Pack.bat, or from
+# the setup itself:  python -m rgsetup --dest <this folder> --preset recommended
 #
-#   Install.bat                         (or drop the .iso onto it)
+#   Install.bat                         (or drop the .iso on it; a .cue, .chd or a disc folder work too)
 #   Install.bat -Iso "D:\Rogue Galaxy (USA).iso"
 #   Install.bat -UseToolsOnPath         (developers: the toolchain already on PATH)
 #   Install.bat -Yes                    (no questions: a short path is used if needed,
 #                                        no shortcut is made and the game is not started)
+#   Install.bat -Estimate               (checks this PC and the disc, shows the plan, disk and time; changes nothing)
 #
-# Windows PowerShell 5.1, so no newer syntax; plain ASCII, which 5.1 reads
-# without a byte order mark.
+# Windows PowerShell 5.1, so no newer syntax; plain ASCII, which 5.1 reads without a byte order mark.
 
 param(
     [string]$Iso = "",
     [switch]$UseToolsOnPath,
-    [switch]$Yes
+    [switch]$Yes,
+    [switch]$Estimate
 )
 
 $ErrorActionPreference = "Stop"
 $Root = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..\..")).Path
 $ToolDir = Join-Path $Root "toolchain"
-$Downloads = Join-Path $ToolDir "downloads"
 $System32 = Join-Path $env:SystemRoot "System32"
-
-# The tools the build was tested with (docs/BUILDING.md). A new pin needs
-# its archive's SHA-256 from the release page: GitHub shows each asset's.
-$Tools = @(
-    @{ Name = "git"; Label = "Git 2.56.0 (MinGit)"; Exe = "cmd\git.exe"; Ext = ".zip"; MB = 38
-       Url = "https://github.com/git-for-windows/git/releases/download/v2.56.0.windows.2/MinGit-2.56.0.2-64-bit.zip"
-       Sha256 = "da35e72aa21c005a5a0d298cfbae110bc1609a815730ea0dde84b01a1b3cd3be" },
-    @{ Name = "python"; Label = "Python 3.12.13"; Exe = "python.exe"; Ext = ".tar.gz"; MB = 44
-       Url = "https://github.com/astral-sh/python-build-standalone/releases/download/20260807/cpython-3.12.13%2B20260807-x86_64-pc-windows-msvc-install_only.tar.gz"
-       Sha256 = "6cf2be701aa7e9470454c9c86285c1bcc1832518d63e39c3e34e9d8ea1cbb99f" },
-    @{ Name = "cmake"; Label = "CMake 3.31.12"; Exe = "bin\cmake.exe"; Ext = ".zip"; MB = 45
-       Url = "https://github.com/Kitware/CMake/releases/download/v3.31.12/cmake-3.31.12-windows-x86_64.zip"
-       Sha256 = "0c4baa40f28b3f8225eb3fdf6946c987b4fe901403b4eaf2fbbd9378100aaa0c" },
-    @{ Name = "ninja"; Label = "Ninja 1.13.2"; Exe = "ninja.exe"; Ext = ".zip"; MB = 1
-       Url = "https://github.com/ninja-build/ninja/releases/download/v1.13.2/ninja-win.zip"
-       Sha256 = "07fc8261b42b20e71d1720b39068c2e14ffcee6396b76fb7a795fb460b78dc65" },
-    @{ Name = "llvm-mingw"; Label = "LLVM 22.1.8 (llvm-mingw 20260616)"; Exe = "bin\clang.exe"; Ext = ".zip"; MB = 179
-       Url = "https://github.com/mstorsjo/llvm-mingw/releases/download/20260616/llvm-mingw-20260616-ucrt-x86_64.zip"
-       Sha256 = "b9b68a4d276e16fa25802aaba458e4638f64b3884c290aaccdc2d87083b6ca35" }
-)
+$SetupDir = Join-Path $Root "tools\setup"
 
 # The deepest path the build writes is 185 characters below this folder
 # (in build\tools\_deps), and Windows tools stop at 259 in all.
@@ -121,136 +101,87 @@ function Move-ToShortPath([string]$Problem) {
     exit $LASTEXITCODE
 }
 
-# An antivirus looks at the files just written and holds them meanwhile:
-# Windows then refuses to delete or rename them, or to rename the folder
-# they are in, which stopped the first install from the internet (unpacking
-# MinGit, 2026-10-27; tools are unpacked in place since). So each such step
-# tries again for half a minute before it gives up.
-function Invoke-Patiently([string]$What, [scriptblock]$Action, [switch]$Optional) {
-    for ($try = 1; ; $try++) {
-        try { & $Action; return }
-        catch {
-            if ($try -lt 60) { Start-Sleep -Milliseconds 500; continue }
-            if ($Optional) { return }
-            Stop-Install ("Windows did not let the installer $What ($($_.Exception.Message)) " +
-                "An antivirus may still be looking at the files: wait a minute and run Install.bat again.")
-        }
-    }
+function Invoke-Quiet([string]$Exe, [string[]]$Arguments) {
+    $saved = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        & $Exe @Arguments 2>&1 | Out-Null
+        return $LASTEXITCODE
+    } catch { return 1 } finally { $ErrorActionPreference = $saved }
 }
 
-function Get-Download([hashtable]$Tool, [string]$File) {
-    $part = "$File.part"
-    Invoke-Patiently "delete $part" { if (Test-Path -LiteralPath $part) { Remove-Item -LiteralPath $part -Force } }
+function Test-Python([string]$Exe) {
+    return ((Invoke-Quiet $Exe @("-c", "import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)")) -eq 0)
+}
+
+# The Python that runs the setup: the one in toolchain\python, else Python 3.11 or later on this PC.
+function Find-Python {
+    $own = Join-Path $ToolDir "python\python.exe"
+    if ((Test-Path -LiteralPath $own) -and (Test-Python $own)) { return $own }
+    foreach ($name in @("python", "py")) {
+        $cmd = Get-Command $name -ErrorAction SilentlyContinue
+        if (-not $cmd) { continue }
+        $exe = $cmd.Source
+        # Windows' own python.exe may be the Store's stand-in, which fails the version check.
+        if ($name -eq "py") {
+            $ErrorActionPreference = "Continue"
+            $real = & $exe -3 -c "import sys; print(sys.executable)" 2>$null
+            $code = $LASTEXITCODE
+            $ErrorActionPreference = "Stop"
+            if ($code -eq 0 -and $real) { $exe = "$real".Trim() } else { continue }
+        }
+        if (Test-Python $exe) { return $exe }
+    }
+    return ""
+}
+
+# No Python on this PC: the pinned one is downloaded into toolchain\python (the same file the setup's toolchain
+# step reads: tools\setup\rgsetup\data\toolchain.json), checked against its SHA-256.
+function Install-Python {
+    $pins = Get-Content -LiteralPath (Join-Path $SetupDir "rgsetup\data\toolchain.json") -Raw | ConvertFrom-Json
+    $tool = $pins.tools | Where-Object { $_.name -eq "python" } | Select-Object -First 1
+    Write-Host "This PC has no Python 3.11 or later. $($tool.label) ($($tool.mb) MB) will be downloaded into $ToolDir"
+    Write-Host "  from $($tool.url)"
+    Write-Host "  (it must have the SHA-256 $($tool.sha256)); nothing is installed in Windows."
+    if (-not (Confirm-Step "Download it now?")) { Stop-Install "Python is needed. Run Install.bat again and answer y, or install Python 3.11 or later from python.org." }
+    $downloads = Join-Path $ToolDir "downloads"
+    New-Item -ItemType Directory -Force -Path $downloads | Out-Null
+    $file = Join-Path $downloads ("python" + $tool.ext)
     $curl = Join-Path $System32 "curl.exe"
     if (Test-Path -LiteralPath $curl) {
-        & $curl -L --fail --retry 3 --retry-delay 2 --progress-bar -o $part $Tool.Url
-        if ($LASTEXITCODE -ne 0) { Stop-Install "Downloading $($Tool.Label) failed (curl code $LASTEXITCODE). Check the internet connection and run Install.bat again." }
+        & $curl -L --fail --retry 3 --retry-delay 2 --progress-bar -o $file $tool.url
+        if ($LASTEXITCODE -ne 0) { Stop-Install "Downloading Python failed (curl code $LASTEXITCODE). Check the internet connection and run Install.bat again." }
     } else {
         [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
         $progress = $ProgressPreference
         $ProgressPreference = "SilentlyContinue"
-        try { Invoke-WebRequest -Uri $Tool.Url -OutFile $part -UseBasicParsing }
-        catch { Stop-Install "Downloading $($Tool.Label) failed: $($_.Exception.Message)" }
+        try { Invoke-WebRequest -Uri $tool.url -OutFile $file -UseBasicParsing }
+        catch { Stop-Install "Downloading Python failed: $($_.Exception.Message)" }
         finally { $ProgressPreference = $progress }
     }
-    $hash = (Get-FileHash -LiteralPath $part -Algorithm SHA256).Hash.ToLowerInvariant()
-    if ($hash -ne $Tool.Sha256) {
-        Invoke-Patiently "delete $part" { Remove-Item -LiteralPath $part -Force } -Optional
-        Stop-Install "The download of $($Tool.Label) is not the expected file (its SHA-256 differs). Run Install.bat again; if this repeats, something on this network alters downloads."
+    $hash = (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($hash -ne $tool.sha256) {
+        Remove-Item -LiteralPath $file -Force -ErrorAction SilentlyContinue
+        Stop-Install "The download of Python is not the expected file (its SHA-256 differs). Run Install.bat again; if this repeats, something on this network alters downloads."
     }
-    Invoke-Patiently "rename $part" { Move-Item -LiteralPath $part -Destination $File -Force }
-}
-
-function Install-Tool([hashtable]$Tool) {
-    $dir = Join-Path $ToolDir $Tool.Name
-    $stamp = Join-Path $dir ".rg-sha256"
-    if ((Test-Path -LiteralPath (Join-Path $dir $Tool.Exe)) -and (Test-Path -LiteralPath $stamp) -and
-        ((Get-Content -LiteralPath $stamp -Raw).Trim() -eq $Tool.Sha256)) {
-        Write-Host "  $($Tool.Label): ready"
-        return
-    }
-    $file = Join-Path $Downloads ($Tool.Name + $Tool.Ext)
-    $have = (Test-Path -LiteralPath $file) -and
-        ((Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant() -eq $Tool.Sha256)
-    if (-not $have) {
-        Write-Host "  $($Tool.Label): downloading ($($Tool.MB) MB)"
-        Get-Download $Tool $file
-    }
-    Write-Host "  $($Tool.Label): unpacking"
-    # Python's archive is a .tar.gz, so tar.exe is needed in any case.
-    $tar = Join-Path $System32 "tar.exe"
-    if (-not (Test-Path -LiteralPath $tar)) {
-        Stop-Install "This Windows has no tar.exe (Windows 10 version 1803 or later has it), needed to unpack $($Tool.Label)."
-    }
-    # Unpacked in place (see Invoke-Patiently). Archives that hold everything
-    # in one folder give what is inside it.
-    $names = @(& $tar -tf $file | ForEach-Object { $_ -replace '\\', '/' })
-    if ($LASTEXITCODE -ne 0 -or $names.Count -eq 0) { Stop-Install "Unpacking $($Tool.Label) failed: its archive cannot be read." }
-    $prefix = ""
-    $strip = 0
-    while ($true) {
-        $deeper = @($names | Where-Object { $_.IndexOf("/", $prefix.Length) -ge 0 })
-        if ($deeper.Count -eq 0) { break }
-        $next = $deeper[0].Substring(0, $deeper[0].IndexOf("/", $prefix.Length) + 1)
-        $outside = @($names | Where-Object { -not ($_ + "/").StartsWith($next) })
-        if ($outside.Count -gt 0) { break }
-        $prefix = $next
-        $strip++
-    }
-    Invoke-Patiently "delete $dir" { if (Test-Path -LiteralPath $dir) { Remove-Item -LiteralPath $dir -Recurse -Force } }
+    $dir = Join-Path $ToolDir "python"
+    if (Test-Path -LiteralPath $dir) { Remove-Item -LiteralPath $dir -Recurse -Force }
     New-Item -ItemType Directory -Path $dir | Out-Null
-    $options = @()
-    if ($strip -gt 0) { $options = @("--strip-components=$strip") }
-    & $tar -xf $file -C $dir @options
-    if ($LASTEXITCODE -ne 0) { Stop-Install "Unpacking $($Tool.Label) failed. If an antivirus is running, it may be holding the files; run Install.bat again." }
-    if (-not (Test-Path -LiteralPath (Join-Path $dir $Tool.Exe))) {
-        Stop-Install ("$($Tool.Exe) is missing from $($Tool.Label) after unpacking. An antivirus may have removed it: " +
-            "restore it from the antivirus's quarantine (or allow the folder $ToolDir) and run Install.bat again.")
+    # The archive holds one folder (python\); its contents go straight into toolchain\python.
+    & (Join-Path $System32 "tar.exe") -xf $file -C $dir --strip-components=1
+    if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath (Join-Path $dir "python.exe"))) {
+        Stop-Install "Unpacking Python failed. If an antivirus is running it may be holding the files; run Install.bat again."
     }
-    Set-Content -LiteralPath $stamp -Value $Tool.Sha256 -Encoding Ascii
-    Invoke-Patiently "delete $file" { Remove-Item -LiteralPath $file -Force } -Optional
-}
-
-# The build sees these tools and Windows only: compilers, Python or CMake
-# settings installed for other projects change what it does.
-function Set-BuildEnvironment {
-    if (-not $UseToolsOnPath) {
-        $env:PATH = (@(
-            (Join-Path $ToolDir "llvm-mingw\bin"),
-            (Join-Path $ToolDir "cmake\bin"),
-            (Join-Path $ToolDir "ninja"),
-            (Join-Path $ToolDir "python"),
-            (Join-Path $ToolDir "git\cmd"),
-            $System32,
-            $env:SystemRoot,
-            (Join-Path $System32 "Wbem"),
-            (Join-Path $System32 "WindowsPowerShell\v1.0")
-        ) -join ";")
-    }
-    foreach ($name in @("CC", "CXX", "CFLAGS", "CXXFLAGS", "CPPFLAGS", "LDFLAGS", "CPATH", "C_INCLUDE_PATH",
-                        "CPLUS_INCLUDE_PATH", "LIBRARY_PATH", "INCLUDE", "LIB", "CMAKE_GENERATOR",
-                        "CMAKE_GENERATOR_PLATFORM", "CMAKE_GENERATOR_TOOLSET", "CMAKE_PREFIX_PATH",
-                        "CMAKE_TOOLCHAIN_FILE", "PYTHONHOME", "PYTHONPATH", "PYTHONSTARTUP", "SDL3_DIR", "ZLIB_ROOT")) {
-        Remove-Item -LiteralPath "Env:$name" -ErrorAction SilentlyContinue
-    }
-    $env:PYTHONUTF8 = "1"
-    $env:PYTHONUNBUFFERED = "1"
-    # One library's tests sit deeper than Windows' old path limit; the
-    # dependency downloads check out at fixed tags.
-    $env:GIT_CONFIG_COUNT = "3"
-    $env:GIT_CONFIG_KEY_0 = "core.longpaths"
-    $env:GIT_CONFIG_VALUE_0 = "true"
-    $env:GIT_CONFIG_KEY_1 = "safe.directory"
-    $env:GIT_CONFIG_VALUE_1 = "*"
-    $env:GIT_CONFIG_KEY_2 = "advice.detachedHead"
-    $env:GIT_CONFIG_VALUE_2 = "false"
+    Set-Content -LiteralPath (Join-Path $dir ".rg-sha256") -Value $tool.sha256 -Encoding Ascii
+    Remove-Item -LiteralPath $file -Force -ErrorAction SilentlyContinue
+    return (Join-Path $dir "python.exe")
 }
 
 function Select-DiscImage {
     Add-Type -AssemblyName System.Windows.Forms
     $dialog = New-Object System.Windows.Forms.OpenFileDialog
     $dialog.Title = "Choose your Rogue Galaxy (USA) disc image"
-    $dialog.Filter = "Disc images (*.iso)|*.iso|All files (*.*)|*.*"
+    $dialog.Filter = "Disc images (*.iso;*.cue;*.bin;*.chd)|*.iso;*.cue;*.bin;*.chd|All files (*.*)|*.*"
     $owner = New-Object System.Windows.Forms.Form
     $owner.TopMost = $true
     try {
@@ -271,8 +202,8 @@ function Main {
     Write-Host "Builds the game on this PC from your own disc image. Everything goes into this folder:"
     Write-Host "  $Root"
 
-    if (-not (Test-Path -LiteralPath (Join-Path $Root "setup.py"))) {
-        Stop-Install "setup.py is not beside Install.bat. Extract the whole zip first, then run Install.bat from the extracted folder."
+    if (-not (Test-Path -LiteralPath (Join-Path $SetupDir "rgsetup\cli.py"))) {
+        Stop-Install "tools\setup is not beside Install.bat. Extract the whole zip first, then run Install.bat from the extracted folder."
     }
     if (-not [Environment]::Is64BitOperatingSystem) { Stop-Install "The game needs 64-bit Windows 10 or later." }
 
@@ -282,81 +213,46 @@ function Main {
         Stop-Install "Move this folder to a short path without spaces, such as C:\RogueGalaxy, and run Install.bat there."
     }
 
-    $hashes = Get-Content -LiteralPath (Join-Path $Root "config\SCUS_974.90\hashes.json") -Raw | ConvertFrom-Json
+    # The disc is asked for only when disc\ does not hold it yet.
     $extracted = (Test-Path -LiteralPath (Join-Path $Root "disc\manifest.json")) -and
-        (Test-Path -LiteralPath (Join-Path $Root "disc\$($hashes.elf)"))
-    $needGB = 9
-    if (-not $extracted) { $needGB += 7 }
-    $freeGB = [math]::Floor((New-Object System.IO.DriveInfo((Get-Drive $Root))).AvailableFreeSpace / 1GB)
-    if ($freeGB -lt $needGB) {
-        Stop-Install "The drive has $freeGB GB free; the install needs about $needGB GB. Free some space or move this folder to another drive."
-    }
-
+        (Test-Path -LiteralPath (Join-Path $Root "disc\SCUS_974.90"))
     if ($extracted -and $Iso) {
         Write-Host ""
         Write-Host "disc\ already holds the extracted disc, so $Iso is not used (delete disc\manifest.json to extract it instead)."
+        $Iso = ""
     }
     if (-not $extracted) {
         Write-Step "Your disc image"
-        while ($true) {
-            if (-not $Iso) {
-                Write-Host "Choose the image of your Rogue Galaxy disc (USA, SCUS-97490) in the window that opens."
-                $Iso = Select-DiscImage
-                if (-not $Iso) { Stop-Install "No disc image chosen. Run Install.bat again when you have it." }
-            }
-            if (-not (Test-Path -LiteralPath $Iso -PathType Leaf)) { Stop-Install "There is no file $Iso." }
-            $size = (Get-Item -LiteralPath $Iso).Length
-            if ($size -eq $hashes.iso.size) { break }
-            Write-Host ("$Iso is not the disc this project supports: the USA disc image is $($hashes.iso.size) bytes " +
-                "(Redump's ""$($hashes.iso.name)""), this file is $size.") -ForegroundColor Yellow
-            if ($Yes -or -not (Confirm-Step "Choose another file?")) { Stop-Install "No supported disc image chosen." }
-            $Iso = ""
+        if (-not $Iso) {
+            Write-Host "Choose the image of your Rogue Galaxy disc (USA, SCUS-97490) in the window that opens."
+            $Iso = Select-DiscImage
+            if (-not $Iso) { Stop-Install "No disc image chosen. Run Install.bat again when you have it." }
         }
+        if (-not (Test-Path -LiteralPath $Iso)) { Stop-Install "There is no file or folder $Iso." }
         Write-Host "  $Iso"
     }
 
-    Write-Step "Build tools"
-    if ($UseToolsOnPath) {
-        foreach ($name in @("git", "python", "cmake", "ninja", "clang", "clang++")) {
-            if (-not (Get-Command $name -ErrorAction SilentlyContinue)) { Stop-Install "-UseToolsOnPath: $name is not on PATH." }
-        }
-        $python = (Get-Command python).Source
-        # Windows' own python.exe may be the Store's stand-in.
-        & $python -c "import sys; sys.exit(sys.version_info < (3, 11))"
-        if ($LASTEXITCODE -ne 0) { Stop-Install "-UseToolsOnPath: $python is not Python 3.11 or later." }
-        Write-Host "  using the tools on PATH"
-    } else {
-        Write-Host "Downloaded into $ToolDir; nothing is installed in Windows."
-        New-Item -ItemType Directory -Force -Path $Downloads | Out-Null
-        foreach ($tool in $Tools) { Install-Tool $tool }
-        Invoke-Patiently "delete $Downloads" { if (Test-Path -LiteralPath $Downloads) { Remove-Item -LiteralPath $Downloads -Recurse -Force } } -Optional
-        $python = Join-Path $ToolDir "python\python.exe"
-    }
-    Set-BuildEnvironment
+    $python = Find-Python
+    if (-not $python) { $python = Install-Python }
 
-    if (-not (Test-Path -LiteralPath (Join-Path $Root "thirdparty\PS2Recomp\CMakeLists.txt")) -or
-        -not (Test-Path -LiteralPath (Join-Path $Root "thirdparty\imgui\imgui.h"))) {
-        if (-not (Test-Path -LiteralPath (Join-Path $Root ".git"))) {
-            Stop-Install ("thirdparty\PS2Recomp or thirdparty\imgui is empty. GitHub's ""Source code"" download leaves them out: " +
-                "download RogueGalaxy-$version.zip from the release page instead.")
-        }
-        Write-Step "The framework's source (git submodules)"
-        & git -C $Root submodule update --init --recursive
-        if ($LASTEXITCODE -ne 0) { Stop-Install "Fetching the git submodules failed." }
-    }
-
+    # The setup, with the choices Install.bat always had: the game only, build tools downloaded into toolchain\.
+    $arguments = @("-X", "utf8", "-m", "rgsetup", "--dest", $Root, "--preset", "faithful", "--yes", "--format", "text")
+    if ($Iso) { $arguments += @("--source", $Iso) }
+    if ($UseToolsOnPath) { $arguments += "--tools-on-path" }
+    if ($Estimate) { $arguments += "--estimate" }
     Write-Step "Building the game"
     Write-Host "This takes about 20 minutes on a fast PC, up to an hour on a slower one; it can be left alone."
     Write-Host "Clicking inside this window pauses it (the title then starts with ""Select""); press Esc to go on."
-    Write-Host "Everything shown here also goes to install.log."
-    $log = Join-Path $Root "install.log"
-    $arguments = @("-u", (Join-Path $Root "setup.py"), "install")
-    if ($Iso -and -not $extracted) { $arguments += @("--iso", $Iso) }
+    Write-Host "Everything shown here also goes to install.log. The same as: python -m rgsetup $($arguments[4..($arguments.Count - 1)] -join ' ')"
+    # install.log keeps what the last install showed; an estimate changes nothing, so it leaves the file alone.
+    $log = if ($Estimate) { Join-Path $env:TEMP "rg-install-estimate.log" } else { Join-Path $Root "install.log" }
     $writer = New-Object System.IO.StreamWriter($log, $false, (New-Object System.Text.UTF8Encoding($false)))
     $writer.AutoFlush = $true
-    # Native programs' error output arrives as error records; with "Stop" the
-    # first of them would end the script.
+    # Native programs' error output arrives as error records; with "Stop" the first of them would end the script.
     $ErrorActionPreference = "Continue"
+    $env:PYTHONPATH = $SetupDir
+    $env:PYTHONIOENCODING = "utf-8"
+    $env:PYTHONNOUSERSITE = "1"
     Push-Location -LiteralPath $Root
     try {
         & $python @arguments 2>&1 | ForEach-Object {
@@ -371,6 +267,7 @@ function Main {
     }
     $ErrorActionPreference = "Stop"
     $game = Join-Path $Root "Rogue Galaxy.exe"
+    if ($Estimate) { exit $code }
     if ($code -ne 0 -or -not (Test-Path -LiteralPath $game)) {
         $hint = ""
         $text = Get-Content -LiteralPath $log -Raw
