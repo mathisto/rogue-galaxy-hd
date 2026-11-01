@@ -67,6 +67,15 @@ struct GameOption {
     bool number() const { return maximum > minimum; }
 };
 
+// What the install folder holds, for the Setup and HD page (Rogue Galaxy: added).
+struct SetupInfo {
+    int textureFiles = 0;  // HD texture pictures found; 0 when there are none
+    int movieFiles = 0;    // HD movies found
+    int movieTotal = 0;    // and how many the game has
+    bool canRun = false;   // the setup program is in the game's folder
+    std::string release;   // the version the setup recorded, empty when the folder was not made by it
+};
+
 struct HostServices {
     std::string version;
     // The commit it was built from, beside the version in the About window
@@ -104,12 +113,16 @@ struct HostServices {
     // with a cheat in use; refusals counts the saves the host turned down.
     std::function<int()> cheatsStatus;
     std::function<unsigned()> cheatsRefusals;
+    // The Setup and HD page (Rogue Galaxy: added): what is installed, and a
+    // button that opens the setup window. runSetup says whether it started.
+    std::function<SetupInfo()> setupInfo;
+    std::function<bool()> runSetup;
 };
 
 // Game: Rogue Galaxy's own switches (added). In the order of the page list:
 // the ones used most first, Cheats last.
-enum class SettingsPage : uint8_t { Display, Sound, Controls, Game, Interface, Cheats, Count };
-inline constexpr const char *kSettingsPageNames[] = {"Display", "Sound", "Controls", "Game", "Interface", "Cheats"};
+enum class SettingsPage : uint8_t { Display, Sound, Controls, Game, Interface, Setup, Cheats, Count };
+inline constexpr const char *kSettingsPageNames[] = {"Display", "Sound", "Controls", "Game", "Interface", "Setup and HD", "Cheats"};
 
 class Overlay final : public gfx::SdlGpuOverlay {
 public:
@@ -222,6 +235,7 @@ private:
     bool toggleCheatsMaster();
     void requestCheatsMaster(bool on);
     void drawInterfacePage();
+    void drawSetupPage();
     void drawCapturePrompt();
     void drawAbout();
     void drawShortcuts();
@@ -295,6 +309,9 @@ private:
     bool m_settingsOpen = false;
     bool m_focusSettings = false;
     SettingsPage m_page = SettingsPage::Display;
+    // The Setup and HD page: read again every two seconds while it is shown.
+    SetupInfo m_setupInfo;
+    double m_setupAt = -10.0;
     bool m_aboutOpen = false;
     bool m_shortcutsOpen = false;
     bool m_statsOpen = false;

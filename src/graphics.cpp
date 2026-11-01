@@ -31,6 +31,7 @@
 #include "quick_scenes.h"
 #include "scene_timing.h"
 #include "settings_pages.h"
+#include "setup_info.h"
 #include "shop_prices.h"
 #include "vif1_thread.h"
 #include "widescreen.h"
@@ -742,6 +743,17 @@ std::unique_ptr<dq8::ui::Overlay> createMenu(PS2Runtime &runtime, dq8::gfx::SdlG
     };
     host.cheatsStatus = [] { return rg::cheats::master() ? (rg::cheats::active() ? 2 : 1) : 0; };
     host.cheatsRefusals = [] { return rg::cheats::refusedSaves(); };
+    // The Setup and HD page: what the folder holds, and the setup window.
+    host.setupInfo = [] {
+        dq8::ui::SetupInfo info;
+        info.textureFiles = static_cast<int>(dq8::gfx::GsReplacementStore::instance().fileCount());
+        info.movieFiles = rg::hdmovie::fileCount();
+        info.movieTotal = rg::hdmovie::kMovieCount;
+        info.canRun = rg::setupinfo::setupProgramPresent();
+        info.release = rg::setupinfo::recordedRelease();
+        return info;
+    };
+    host.runSetup = [] { return rg::setupinfo::openSetup(); };
     host.setGameNumber = &applyGameNumber;
     auto menu = std::make_unique<dq8::ui::Overlay>(backend, std::move(settings), settingsPath, std::move(host));
     std::string error;

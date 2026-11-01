@@ -20,7 +20,7 @@ namespace {
 using gfx::PadInput;
 
 constexpr const char *kTimes = "\xC3\x97"; // U+00D7, spelled out for compilers without /utf-8
-constexpr Icon kPageIcons[] = {Icon::Display, Icon::Sound, Icon::Controls, Icon::Disc, Icon::Interface, Icon::Wrench};
+constexpr Icon kPageIcons[] = {Icon::Display, Icon::Sound, Icon::Controls, Icon::Disc, Icon::Interface, Icon::Gear, Icon::Wrench};
 
 // The Cheats page's options, in the host's list with the Game page's (Rogue Galaxy: added).
 bool isCheatKey(const std::string &key) { return key.rfind("cheat", 0) == 0; }
@@ -240,6 +240,7 @@ void Overlay::drawSettingsWindow() {
         case SettingsPage::Controls: drawControlsPage(); break;
         case SettingsPage::Game: drawGamePage(); break;
         case SettingsPage::Interface: drawInterfacePage(); break;
+        case SettingsPage::Setup: drawSetupPage(); break;
         case SettingsPage::Cheats: drawCheatsPage(); break;
         case SettingsPage::Count: break;
         }
@@ -606,6 +607,88 @@ void Overlay::drawInterfacePage() {
         applyPause();
         markDirty();
         notify("Interface settings restored", Icon::Check);
+    }
+}
+
+// Setup and HD (Rogue Galaxy: added): what the install folder holds, read from
+// the folders the game reads (HD textures, HD movies) and the settings, and a
+// button that opens the setup window to add or change a part.
+void Overlay::drawSetupPage() {
+    if (!m_host.setupInfo) {
+        mutedText("This build has no setup to open.");
+        return;
+    }
+    const double now = ImGui::GetTime();
+    if (now - m_setupAt > 2.0 || now < m_setupAt) {
+        m_setupInfo = m_host.setupInfo();
+        m_setupAt = now;
+    }
+    const SetupInfo &info = m_setupInfo;
+    auto group = [](int n) {
+        std::string digits = std::to_string(n), out;
+        for (size_t i = 0; i < digits.size(); ++i) {
+            if (i && (digits.size() - i) % 3 == 0)
+                out += ',';
+            out += digits[i];
+        }
+        return out;
+    };
+    auto choice = [&](const char *key) -> std::string {
+        for (const GameOption &option : m_host.gameOptions)
+            if (option.key == key && option.number()) {
+                const int index = std::clamp(gameNumber(option) - option.minimum, 0,
+                                             static_cast<int>(option.choices.size()) - 1);
+                return option.choices.empty() ? std::string() : option.choices[static_cast<size_t>(index)];
+            }
+        return "-";
+    };
+
+    sectionHeader("What is installed");
+    if (beginSettings("installed")) {
+        settingRow("HD textures", "Sharper pictures. Switch them on or off under Game > Texture replacements.");
+        ImGui::AlignTextToFramePadding();
+        if (info.textureFiles > 0)
+            ImGui::Text("%s pictures", group(info.textureFiles).c_str());
+        else
+            mutedText("Not installed");
+        settingRow("HD movies", "Upscaled cutscenes. Switch them under Game > HD movies.");
+        ImGui::AlignTextToFramePadding();
+        if (info.movieFiles > 0)
+            ImGui::Text("%d of %d", info.movieFiles, info.movieTotal);
+        else
+            mutedText("Not installed");
+        settingRow("Font", "Change it under Game > Font.");
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted(choice("font_style").c_str());
+        settingRow("Button prompts", "Change them under Game > Button prompts.");
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted(choice("button_prompts").c_str());
+        settingRow("Installed by", "The version of the setup that built this folder.");
+        ImGui::AlignTextToFramePadding();
+        if (!info.release.empty())
+            ImGui::Text("Setup %s", info.release.c_str());
+        else
+            mutedText("Not recorded");
+        endSettings();
+    }
+
+    sectionHeader("Add or change");
+    if (beginSettings("setup")) {
+        settingRow("Run the setup", "Adds the HD parts you skipped, or updates after a new release. Close the game "
+                                    "first if it has to be rebuilt.");
+        ImGui::BeginDisabled(!info.canRun);
+        if (ImGui::Button("Open the setup")) {
+            if (m_host.runSetup && m_host.runSetup())
+                notify("The setup is opening", Icon::Check);
+            else
+                notify("The setup could not be started", Icon::Warning);
+        }
+        ImGui::EndDisabled();
+        if (!info.canRun && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+            ImGui::SetTooltip("RogueGalaxy-Setup.exe is not in the game's folder.");
+        rowDetail("The setup opens in its own window. It can add HD textures and HD movies, and it keeps your saves "
+                  "and settings. HD parts need a graphics card with Vulkan.");
+        endSettings();
     }
 }
 

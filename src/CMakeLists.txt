@@ -80,6 +80,7 @@ add_executable(roguegalaxy
     hotkeys.cpp
     movie_audio.cpp
     movie_hd.cpp
+    setup_info.cpp
     quick_scenes.cpp
     return_hook.cpp
     instant_text.cpp
