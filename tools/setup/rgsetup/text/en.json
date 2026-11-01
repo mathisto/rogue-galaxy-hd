@@ -103,6 +103,7 @@
 
   "warn.output_changed": "What the {step} step made earlier has changed since: it will be done again.",
   "warn.dest_not_program_folder": "{dest} is not the folder this setup runs from ({program}). This check goes on, but a real install into another folder is not supported yet.",
+  "warn.no_source": "No disc was given yet, so this plan assumes a valid Rogue Galaxy (USA) disc. Pass --source to check yours.",
   "warn.hd_no_vulkan": "HD textures and HD movies need a graphics card with Vulkan, and this PC has no Vulkan driver. They are left out; the game itself installs and plays without them. Update the graphics driver and run the setup again to add them.",
   "warn.hd_no_gpu": "HD textures and HD movies need a graphics card (NVIDIA, AMD or Intel Arc) with Vulkan, and only {devices} was found. They are left out; the game itself installs and plays without them.",
 

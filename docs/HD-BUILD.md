@@ -6,11 +6,34 @@ pack ([TEXTURE-PACKS.md](TEXTURE-PACKS.md)) and the 89 upscaled 1080p cutscenes
 Nothing it makes may be shared ([SHARING.md](SHARING.md)); that is why it is a
 builder and not a download.
 
+`Build-HD-Pack.bat` is a thin wrapper: it starts the setup program
+(`python -m rgsetup`, [INSTALLER.md](INSTALLER.md)) for the HD parts only, and the
+setup calls `tools/hd/build_hd_pack.py`, which does the work described below. The
+same HD builds are a choice in the setup itself (`--preset recommended` or
+`everything`, or `--components textures,movies`), next to the game and with one
+plan for disk, time and downloads. The wrapper prints the line it runs. The old
+options map like this, and any option only the builder itself has (`--redo`,
+`--work`, `--out`, `--disc`, `--sample-log`, `--stall-timeout`, `--retry-failed`,
+`--skip-space-check`) makes the wrapper run `build_hd_pack.py` directly, as before:
+
+| `Build-HD-Pack.bat` | `python -m rgsetup` |
+|---|---|
+| `--mode 1` / `2` / `3` | `--components textures` / `movies` / `textures,movies` |
+| `--iso FILE` (or a file dropped on the .bat) | `--source FILE` (an .iso, .cue, .chd, or a folder) |
+| `--estimate`, `--gentle`, `--yes`, `--clean-work`, `--gpu N` | the same |
+| `--limit N`, `--limit-movies N` | the same |
+
+Differences from running the builder alone: a PC without a usable Vulkan graphics card is told so in the
+plan before anything is downloaded (the probe asks the driver, not Real-ESRGAN); numpy and Pillow (Pillow 13.0.0 or
+later, for the fixed security holes of the older ones) are installed after a yes, as part of the plan; the builder
+reports its stages as events (`build_hd_pack.py --events`), so a window can show progress; and a step the setup
+recorded as finished with unchanged inputs is not even started.
+
 ## Before you start
 
 - `Install.bat` has run: the builder reads the extracted disc in `disc\` (if
-  it is not there, the builder asks for your `.iso` and extracts it the way
-  `Install.bat` does).
+  it is not there, `Build-HD-Pack.bat` asks for your disc image, an `.iso`, `.cue` or `.chd`, and the setup
+  extracts it the way `Install.bat` does).
 - A graphics card with **Vulkan**: NVIDIA, AMD, or Intel Arc/Xe, with a current
   driver. The upscaler runs on it; without one the builder says so and stops
   before doing anything (the game itself plays without the HD files).
@@ -18,7 +41,7 @@ builder and not a download.
   the repository (the pack and the movies are hard links to the work files, so
   they take no more). `--work "D:\somewhere"` puts the work files on another
   drive.
-- Python 3.10 or later: the one `Install.bat` put in `toolchain\python` is used;
+- Python 3.11 or later (3.10 if you run `build_hd_pack.py` directly): the one `Install.bat` put in `toolchain\python` is used;
   otherwise a Python on your PC. The two packages the tools need, **numpy** and
   **Pillow** (`tools\hd\requirements.txt`), are installed into
   `toolchain\pylibs` after asking (from pypi.org, about 40 MB). Nothing is

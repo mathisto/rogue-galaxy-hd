@@ -143,17 +143,14 @@ class CheckStep(Step):
         # the disc
         if ctx.runs.get('extract'):
             if not ctx.source_path:
-                raise SetupError('err.source_required')
-            rep.progress('check', 'disc', 0, 1, 'files', force=True)
-            ctx.shared['disc'] = ctx.identify_source(rep)
-            rep.progress('check', 'disc', 1, 1, 'files', force=True)
+                if not opt.estimate:
+                    raise SetupError('err.source_required')
+                rep.warning('warn.no_source')       # an estimate before the disc is chosen: the plan assumes a valid one
+                ctx.shared['disc'] = None
+            else:
+                self.validate_source(ctx, rep)
         elif ctx.source_path and (opt.verify or opt.estimate):
-            rep.progress('check', 'disc', 0, 1, 'files', force=True)
-            try:
-                ctx.shared['disc'] = ctx.identify_source(rep)
-            except discmod.DiscProblem as e:
-                raise SetupError(e.id, **e.params) from None
-            rep.progress('check', 'disc', 1, 1, 'files', force=True)
+            self.validate_source(ctx, rep)
 
         # the graphics card
         for item in ctx.skipped_components:
@@ -173,6 +170,11 @@ class CheckStep(Step):
         if not same and tfree < temp_need:
             raise SetupError('err.space_temp', need=round(temp_need / GiB, 1), free=round(tfree / GiB, 1), temp=str(ctx.temp))
         return {}
+
+    def validate_source(self, ctx, rep):
+        rep.progress('check', 'disc', 0, 1, 'files', force=True)
+        ctx.shared['disc'] = ctx.identify_source(rep)
+        rep.progress('check', 'disc', 1, 1, 'files', force=True)
 
 
 # ---- source

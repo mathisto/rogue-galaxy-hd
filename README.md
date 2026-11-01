@@ -48,11 +48,21 @@ and your own image of the disc: Rogue Galaxy, USA, SCUS-97490
 1. Download `RogueGalaxy-<version>.zip` from the [releases](../../releases)
    page (not "Source code").
 2. Extract it to a short folder, such as `C:\RogueGalaxy`.
-3. Double-click `Install.bat` and choose your disc image.
+3. Double-click `Install.bat` and choose your disc image (an `.iso`, a
+   `.bin`/`.cue`, a `.chd`, or a folder with the disc's files).
 4. Wait about 20 minutes on a fast PC, up to an hour on a slower one: it
    downloads the build tools (about 300 MB) into the folder, extracts your
    disc and builds the game. Nothing is installed in Windows.
 5. Play with `Rogue Galaxy.exe`.
+
+`Install.bat` and `Build-HD-Pack.bat` are wrappers over the setup program,
+`python -m rgsetup` ([docs/INSTALLER.md](docs/INSTALLER.md)), which also does it
+in one go, with a choice of **Faithful** (the game only), **Recommended** (the
+game, HD textures, the modern font with Xbox prompts) or **Everything** (also
+the HD movies), shows the disk space and time first, and updates an existing
+folder when you run a newer one on it:
+`python -m rgsetup --dest C:\RogueGalaxy --source "Rogue Galaxy (USA).iso" --preset recommended`
+(from `tools\setup`; add `--estimate` to see the plan and change nothing).
 
 ### HD textures and HD movies (optional)
 
@@ -68,7 +78,7 @@ only if you have none), can be stopped and run again where it left off, and
 has a `--gentle` mode that keeps the PC usable. Details, options and
 troubleshooting: [docs/HD-BUILD.md](docs/HD-BUILD.md).
 
-If it stops, `install.log` says why; running `Install.bat` again continues
+If it stops, `install.log` (and `work\setup\logs`) says why; running `Install.bat` again continues
 where it stopped. If an antivirus removes the compiler, restore it and run
 it again. To uninstall, delete the folder (your saves are in `disc\mc0`).
 
@@ -103,6 +113,8 @@ See [docs/OPTIONS.md](docs/OPTIONS.md) for each one, and
 ## More
 
 - [CHANGELOG.md](CHANGELOG.md): what each release brings, and its known issues
+- [docs/INSTALLER.md](docs/INSTALLER.md): the setup program behind `Install.bat` and
+  `Build-HD-Pack.bat`: presets, disc inputs, options, events, resuming and updating
 - [docs/OPTIONS.md](docs/OPTIONS.md): the menu and every game option
 - [docs/CHEATS.md](docs/CHEATS.md): the cheats: what each does, where it lives
   in the game, what was verified, and why saving is blocked while they are on
@@ -144,8 +156,10 @@ them is sharing the game. `Build-HD-Pack.bat` makes them on your PC from your
 disc ([docs/SHARING.md](docs/SHARING.md) says why).
 
 **Which disc works?** The USA release, SCUS-97490, the Redump image of
-6,967,721,984 bytes ([docs/DISC.md](docs/DISC.md)). `Install.bat` checks the
-size and the hashes.
+6,967,721,984 bytes ([docs/DISC.md](docs/DISC.md)). The setup checks the
+serial, the sizes and the hashes of the files whatever the format you give it
+(ISO, BIN/CUE, CHD, or an extracted folder), and says plainly what it found if
+it is another release or an incomplete dump.
 
 **Do I need a good graphics card?** To play, any recent Vulkan card. To *build*
 the HD pack you need an NVIDIA, AMD or Intel Arc card with a current driver: the

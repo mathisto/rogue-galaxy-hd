@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+- Setup program: `python -m rgsetup` (tools/setup, docs/INSTALLER.md) is the
+  one engine behind `Install.bat` and `Build-HD-Pack.bat`, which are now thin
+  wrappers (old options still work or print their new equivalent). It prints
+  one JSON event per line (start, plan, step, progress, space, warning, error,
+  end), keeps a log in words, a state file (`rg-install.json`) and exit codes
+  0 done / 1 failed / 2 bad command line / 3 cancelled. Presets: Faithful
+  (the game), Recommended (+ HD textures + modern font and Xbox prompts),
+  Everything (+ HD movies), each broken down per component with its disk and
+  time. Disc inputs: ISO, BIN/CUE, CHD (converted with a pinned,
+  SHA-256-checked chdman downloaded only after a yes), or an extracted folder
+  validated by the hashes of its files, with one clear message for a wrong or
+  partial dump and a plain statement for another region (only USA SCUS-97490).
+  Steps carry keys, so a re-run skips what is finished and intact, and running
+  a newer setup on the same folder is an update that keeps saves, settings and
+  finished HD work; a folder made by the old Install.bat is adopted as it is.
+  A PC without a usable Vulkan card gets the game and is told why the HD parts
+  were left out. `tools/hd/build_hd_pack.py` gained `--events`.
+  Pillow 13.0.0 or later is now required for the HD tools. Unit tests are in
+  tests/ (`python -m unittest discover -s tests -p "test_setup_*.py"`).
+
 - HD pack builder: `Build-HD-Pack.bat` builds the HD texture pack and the
   89 HD movies from your own disc in one go (docs/HD-BUILD.md). The tools that
   used to live outside the repository are in `tools/hd/` (the archive

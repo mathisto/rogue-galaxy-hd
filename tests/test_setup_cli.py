@@ -184,6 +184,27 @@ class Cli(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertEqual(self.only(evs, 'error')[0]['id'], 'err.source_required')
 
+    def test_an_estimate_without_a_disc_warns_and_goes_on(self):
+        code, evs = self.run_cli('--estimate', '--preset', 'faithful', '--skip', 'build,toolchain')
+        self.assertEqual(code, 0, evs)
+        self.assertIn('warn.no_source', [e['id'] for e in self.only(evs, 'warning')])
+
+    def test_a_folder_from_before_the_setup_is_adopted_not_redone(self):
+        fk.write_folder(self.root / 'disc', self.files)
+        (self.root / 'disc' / 'manifest.json').write_text(json.dumps({'version': 'SCUS_974.90', 'files': {}}))
+        code, evs = self.run_cli('--estimate', '--skip', 'build,toolchain')
+        self.assertEqual(code, 0, evs)
+        self.assertEqual(self.only(evs, 'start')[0]['adopted'], ['extract'])
+        plan = self.only(evs, 'plan')[0]
+        self.assertEqual(plan['skip']['extract'], 'current')
+        self.assertNotIn('extract', plan['run'])
+        self.assertFalse((self.root / statefile.NAME).exists())          # an estimate records nothing
+        # a real run records the adoption, and a damaged disc/ is not adopted
+        (self.root / 'disc' / 'BIN' / 'ONE.BIN').write_bytes(b'short')
+        code, evs = self.run_cli('--estimate', '--skip', 'build,toolchain')
+        self.assertEqual(self.only(evs, 'start')[0]['adopted'], [])
+        self.assertIn('extract', self.only(evs, 'plan')[0]['run'])
+
     def test_a_good_synthetic_iso_passes_the_check_and_a_bad_one_gives_one_message(self):
         iso = self.t / 'x.iso'
         iso.write_bytes(self.image)

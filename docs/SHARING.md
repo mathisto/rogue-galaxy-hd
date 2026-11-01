@@ -18,12 +18,13 @@ own the game and make the disc image yourself.
 |---|---|
 | Source code, scripts, patches, CMake files | Our own work (GPL-3.0) or freely licensed (see [`THIRD-PARTY-NOTICES.md`](../THIRD-PARTY-NOTICES.md)) |
 | Documentation | Our own words |
-| `tools/hd/` (the HD pack tools, `Build-HD-Pack.bat`) | Code only; it reads *your* disc and writes on *your* PC |
+| `tools/setup/` (the setup program, `Install.bat`) and `tools/hd/` (the HD pack tools, `Build-HD-Pack.bat`) | Code only; it reads *your* disc and writes on *your* PC |
 | `tools/hd/data/stone-floor.txt`, `skip-hashes.txt` | Lists of 16-character hashes naming pictures; no pixels, no way to rebuild one |
 | `config/SCUS_974.90/*.csv`, `overlays.toml`, `hashes.json` | Function names and addresses (from RGDecomp, CC0) and file sizes and hashes of the disc (Redump): facts about the game, not its data |
 | `src/button_art_table.inc` | Boxes (x, y, size) saying where PlayStation button pictures sit in the game's pictures; no pixels |
 | Our own art: the launcher icon, the Xbox-style button prompts (drawn in code) | Made from nothing; the font is Roboto (Apache-2.0) |
 | Bug reports, logs (`build/last-run.log`) | They name files and addresses, not their contents. Look them over for your user name and paths first |
+| `rg-install.json`, `work/setup/logs/` (what the setup finished, and its logs) | Hashes of nothing from the disc: names of steps, times, versions. The state names the disc image's file name, not its path; look the logs over for your user name and paths like any log |
 | Settings you made (the menu's `settings.ini`) | Yours to share; it holds no game data (it does hold paths on your PC) |
 | Screenshots and videos of the game that you take | Everyone does it, and a few frames are not the game, but they *are* the game's art: your call. The repository's own screenshots are listed in the findings below |
 
@@ -36,6 +37,7 @@ own the game and make the disc image yourself.
 | **HD movies**: `textures/SCUS-97490/movies`, `work/hd/movies` | Each frame is a frame of the game's movie, and the sound is the game's |
 | Everything the builder makes: `work/hd/` (the extracted archives, the decoded pictures `tim2/`, `im3/`, `all/`, the upscales `upscaled/`, `keys.csv`) | Pictures and tables of the game's data. `keys.csv` is only hashes, but it maps them to the game's file names and positions; keep it with the rest |
 | Learned pictures (`RG_TEXTURE_LEARN` output, `replacements/learned`) | Pictures the game showed |
+| `work/setup/` (a disc image the setup converted from a CHD or BIN/CUE, before it is deleted) | It is the disc |
 | Memory cards and saves (`disc/mc0`, `mc1`) | Yours, and they carry the game's save format and your name; not data to publish |
 | The game's text pages, fonts, dumps of memory, audio or GS captures | The game's data (`debug\` launchers write some of them) |
 | Built executables with the disc inside them | The build contains recompiled game code, which is the game's code in another form: share the *source* and let people build their own (`Install.bat`) |

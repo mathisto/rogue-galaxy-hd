@@ -24,6 +24,7 @@ by them or by any project named below.
 | **RGDecomp** by Dorgengoa | `config/SCUS_974.90/functions_*.csv` derive from its function maps and names | CC0 1.0 (public domain dedication) | The repository's `LICENSE` is "Creative Commons Legal Code, CC0 1.0 Universal". No attribution is required; it is given anyway. |
 | **AMD FidelityFX Super Resolution 1.0** (EASU and RCAS) | `thirdparty/dq8-gfx/src/gfx/backends/sdlgpu/shaders/present_easu.frag`, `present_rcas.frag`: written out again in plain GLSL | MIT, Copyright (c) 2021 Advanced Micro Devices, Inc. | Stated in the headers of both shader files. |
 | **PCSX2** (GameDB, widescreen and 60 fps patch notes) and **Red-tv's 60 fps pnach** for the PAL release | Facts only (addresses, field names, what the patch changes) in `docs/sixty-fps-logic.md` and comments; no PCSX2 code and no pnach text | PCSX2: GPL-3.0. The pnach: no licence stated where it was read; not checked further | Used as a reference and credited; nothing is copied. |
+| **totk-pc-recomp installer** (`installer/`: `events.py`, `state.py`, `runner.py`, `cli.py`) by this project's author | `tools/setup/rgsetup/events.py`, `state.py`, `runner.py` and `cli.py` follow its structure (JSON progress events, step keys that make resume and update one rule, a text catalog of ids, exit codes 0/1/2/3 with cancel by Ctrl+Break) and adapt parts of its code; the rest is written for this project | MIT (the author's own project; the combination here is GPL-3.0) | Credited as the design source; no other code from it. |
 | **Redump** | Disc size and hashes in `docs/DISC.md` and `config/SCUS_974.90/hashes.json` | Facts about a disc image | No data from the disc itself. |
 
 The launcher's icon (`src/launcher/rogue-galaxy.ico`) is drawn by
@@ -43,7 +44,7 @@ boxes (positions in the game's own pictures), never pixels.
 | **sse2neon** v1.9.1 | CMake, ARM builds only | MIT | Not used on Windows x86-64. |
 | **raylib** 5.5 (and, with the debug UI, rlImGui) | CMake, from PS2Recomp's runtime project | zlib | Not examined further: the game's window and renderer are SDL3 and `dq8-gfx`. |
 | **llvm-mingw / LLVM**, **CMake**, **Ninja**, **MinGit**, **Python** (python-build-standalone) | `Install.bat`, into `toolchain/`, SHA-256 pinned | Apache-2.0 with LLVM exceptions, BSD-3-Clause, Apache-2.0, GPL-2.0, PSF | Build tools; nothing from them is in the game. |
-| **numpy**, **Pillow** | `Build-HD-Pack.bat` (pip), into `toolchain/pylibs`, for the HD pack tools | BSD-3-Clause, MIT-CMU (HPND) | Used by the Python tools in `tools/hd/`; not distributed with the project. |
+| **numpy**, **Pillow** (13.0.0 or later) | the setup program or `Build-HD-Pack.bat` (pip), into `toolchain/pylibs`, for the HD pack tools, after a yes | BSD-3-Clause, MIT-CMU (HPND) | Used by the Python tools in `tools/hd/`; not distributed with the project. Pillow 13.0.0 is the floor because older releases have known critical vulnerabilities. |
 
 ## Downloaded by the HD pack builder (`Build-HD-Pack.bat`), on request
 
@@ -55,6 +56,15 @@ SHA-256 printed in `tools/hd/build_hd_pack.py`, and puts the result in
 |---|---|---|
 | **Real-ESRGAN ncnn-vulkan** 20220424, Windows portable build, from <https://github.com/xinntao/Real-ESRGAN/releases/tag/v0.2.5.0> | Real-ESRGAN (the models and training code): BSD-3-Clause, Copyright (c) 2021 Xintao Wang. Real-ESRGAN-ncnn-vulkan: MIT, Copyright (c) 2021 Xintao Wang. ncnn: BSD-3-Clause, Copyright (C) 2017 Tencent. | The zip holds `realesrgan-ncnn-vulkan.exe`, the models `realesr-animevideov3`, `realesrgan-x4plus` and `realesrgan-x4plus-anime`, and Microsoft's `vcomp140.dll` (the Visual C++ OpenMP runtime, redistributable). The zip carries no licence file of its own, so the licences above are those of the three projects' repositories. The upscaled pictures it produces are derived from your disc and are not part of this project. |
 | **FFmpeg** 8.1.2 "essentials" build by gyan.dev, from the `GyanD/codexffmpeg` release 8.1.2, only if no `ffmpeg` is on your PATH | GPL-3.0 build (includes x265 and NVENC support) of FFmpeg, which is LGPL-2.1-or-later with GPL parts | A separate program the builder runs; it is not linked into the game and is not redistributed here. |
+
+## Downloaded by the setup program (`python -m rgsetup`, `Install.bat`), on request
+
+Only for a CHD disc image, and only after the plan has listed it and the player said yes (`--yes`): the address, size,
+SHA-256 and licence are in `tools/setup/rgsetup/download.py`; a file whose SHA-256 differs is deleted and nothing is unpacked.
+
+| Component | Licence | Notes |
+|---|---|---|
+| **chdman** from the **MAME** 0.289 Windows release (`mame0289b_x64.exe`, 87,626,249 bytes, SHA-256 `a1aa7912168c9d1b05e611906bc21b8b9be3935822aead36d12a1da363150b7d`), from <https://github.com/mamedev/mame/releases/tag/mame0289> | chdman: BSD-3-Clause (the header of `src/tools/chdman.cpp`, "license:BSD-3-Clause", Aaron Giles). MAME as a whole: GPL-2.0-or-later (and others per file) | The setup reads the self-extracting archive with the Windows `tar` without running it, keeps `chdman.exe` and `COPYING` in `toolchain/chdman`, and runs chdman as a separate program to turn a CHD into an ISO. It is not linked into the game and is not redistributed here. |
 
 ## Modified code and how to get the source
 
