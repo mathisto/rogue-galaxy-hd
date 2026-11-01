@@ -242,6 +242,7 @@
   "ui.cancelled.heading": "Setup cancelled",
   "ui.cancelled.text": "What was finished is kept. Run the setup again to continue.",
   "ui.err_died": "The setup program ended unexpectedly (code {code}). The log file has the details.",
+  "ui.err_window": "The setup window hit an unexpected problem. What you already did is kept; close the window and open it again. Details are in {path}",
   "ui.err_start": "The setup program could not be started: {detail}",
   "ui.confirm.title": "Cancel the setup?",
   "ui.confirm.text": "Closing the window cancels the setup. What is finished is kept, and you can continue later.",

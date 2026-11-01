@@ -92,6 +92,7 @@ class App:
         root.title(self.cat('ui.title'))
         root.configure(bg=BG)
         root.protocol('WM_DELETE_WINDOW', self.on_close)
+        root.report_callback_exception = self.on_exception
         ico = layout.root / 'tools' / 'setup' / 'rgsetup' / 'data' / 'setup.ico'
         if os.name == 'nt' and ico.is_file():
             try:
@@ -274,6 +275,19 @@ class App:
         self.note = self.label(f, '', fg=WARN_FG, bg=WARN_BG, padx=self.s(10), pady=self.s(7))
         self.error_label = self.label(f, '', fg=BAD, font=self.f_bold)
         return outer
+
+    def on_exception(self, kind, value, tb):
+        """A bug in the window: the traceback goes to a file (pythonw has no console), and the player is told where."""
+        import tempfile
+        import traceback
+        path = Path(tempfile.gettempdir()) / 'rg-setup-logs' / 'window-error.log'
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with open(path, 'a', encoding='utf-8') as f:
+                f.write(time.strftime('%Y-%m-%d %H:%M:%S ') + ''.join(traceback.format_exception(kind, value, tb)) + chr(10))
+        except OSError:
+            pass
+        messagebox.showerror(self.cat('ui.title'), self.cat('ui.err_window', path=str(path)), parent=self.root)
 
     def on_return(self, _event=None):
         """Enter does the screen's main thing, as the highlighted button says."""
