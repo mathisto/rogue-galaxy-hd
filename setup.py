@@ -618,6 +618,20 @@ GAME_BUILD = ROOT / "build" / "game"
 COMPILERS = ["-DCMAKE_C_COMPILER=clang", "-DCMAKE_CXX_COMPILER=clang++"]
 
 
+def offline_args() -> list[str]:
+    """A release (tools/make_release.py) carries the sources CMake would download in deps/<name>, one folder per
+    FetchContent name, each at the tag the build pins. With that folder CMake downloads nothing: each dependency is
+    taken from there, and a name that is missing is an error rather than a fetch. A repository checkout has no deps/
+    and fetches them as before."""
+    deps = ROOT / "deps"
+    if not deps.is_dir():
+        return []
+    args = ["-DFETCHCONTENT_FULLY_DISCONNECTED=ON"]
+    for d in sorted(p for p in deps.iterdir() if p.is_dir()):
+        args.append(f"-DFETCHCONTENT_SOURCE_DIR_{d.name.upper()}={d.as_posix()}")
+    return args
+
+
 def run_step(what: str, command: list[str]) -> None:
     print(f"== {what}", flush=True)
     try:
@@ -672,7 +686,8 @@ def cmd_tools(args: argparse.Namespace) -> int:
     if not configured(TOOLS_BUILD):
         run_step("configure build/tools", [
             "cmake", "-S", str(FRAMEWORK), "-B", str(TOOLS_BUILD), "-G", "Ninja", "-DCMAKE_BUILD_TYPE=Release",
-            "-DPS2X_BUILD_RUNTIME=OFF", "-DPS2X_BUILD_TEST=OFF", "-DPS2X_BUILD_STUDIO=OFF", *COMPILERS])
+            "-DPS2X_BUILD_RUNTIME=OFF", "-DPS2X_BUILD_TEST=OFF", "-DPS2X_BUILD_STUDIO=OFF", *COMPILERS,
+            *offline_args()])
     run_step("build ps2_recomp and ps2_analyzer",
              ["cmake", "--build", str(TOOLS_BUILD), "--target", "ps2_recomp", "ps2_analyzer"])
     return 0
@@ -682,7 +697,8 @@ def cmd_build(args: argparse.Namespace) -> int:
     reset_future_times()
     if not configured(GAME_BUILD):
         run_step("configure build/game", [
-            "cmake", "-S", str(ROOT), "-B", str(GAME_BUILD), "-G", "Ninja", "-DCMAKE_BUILD_TYPE=Release", *COMPILERS])
+            "cmake", "-S", str(ROOT), "-B", str(GAME_BUILD), "-G", "Ninja", "-DCMAKE_BUILD_TYPE=Release", *COMPILERS,
+            *offline_args()])
     run_step("build the game", ["cmake", "--build", str(GAME_BUILD)])
     print(f"built {GAME_BUILD / 'src' / 'roguegalaxy.exe'}; start it with \"Rogue Galaxy.exe\"")
     return 0

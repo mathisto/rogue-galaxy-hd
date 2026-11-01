@@ -85,6 +85,30 @@ def add_archive(zf: zipfile.ZipFile, tar_bytes: bytes, prefix: str) -> int:
     return count
 
 
+def iter_archive(tar_bytes: bytes, prefix: str):
+    with tarfile.open(fileobj=io.BytesIO(tar_bytes)) as tar:
+        for member in tar:
+            if member.isfile():
+                yield prefix + member.name, tar.extractfile(member).read(), member.mtime
+
+
+def iter_source(worktree: bool = False, ref: str = "HEAD"):
+    """(name, bytes, mtime) of every file of the source tree, each submodule at its recorded commit (name is relative
+    to the repository's folder). make_release.py uses it too."""
+    links = gitlinks(worktree, ref)
+    if worktree:
+        skip = {path for path, _ in links}
+        listed = git("ls-files", "-z", "--cached", "--others", "--exclude-standard").decode().split(chr(0))
+        for name in sorted(set(filter(None, listed)) - skip):
+            path = ROOT / name
+            if path.is_file():
+                yield name, path.read_bytes(), path.stat().st_mtime
+    else:
+        yield from iter_archive(archive(ref), "")
+    for path, commit in links:
+        yield from iter_archive(archive(commit, ROOT / path), path + "/")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--out", default=str(ROOT / "build" / "release"))
@@ -109,21 +133,11 @@ def main() -> int:
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     target = out / f"RogueGalaxy-{version}.zip"
-    links = gitlinks(args.worktree, args.ref)
     count = 0
     with zipfile.ZipFile(target, "w") as zf:
-        if args.worktree:
-            skip = {path for path, _ in links}
-            listed = git("ls-files", "-z", "--cached", "--others", "--exclude-standard").decode().split("\0")
-            for name in sorted(set(filter(None, listed)) - skip):
-                path = ROOT / name
-                if path.is_file():
-                    add(zf, name, path.read_bytes(), path.stat().st_mtime)
-                    count += 1
-        else:
-            count += add_archive(zf, archive(args.ref), "")
-        for path, commit in links:
-            count += add_archive(zf, archive(commit, ROOT / path), path + "/")
+        for name, data, mtime in iter_source(args.worktree, args.ref):
+            add(zf, name, data, mtime)
+            count += 1
         add(zf, "REVISION", (revision + "\n").encode(), time.time())
         count += 1
 
