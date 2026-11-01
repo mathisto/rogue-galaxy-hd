@@ -127,7 +127,7 @@ class Catalog(unittest.TestCase):
     def test_no_message_in_the_catalog_is_orphaned(self):
         c = collect()
         used = set(c.ids)
-        dynamic = ('phase.', 'step.', 'component.', 'preset.')
+        dynamic = ('phase.', 'step.', 'component.', 'preset.', 'ui.')    # ui.*: the window's, test_setup_gui.py
         orphans = [i for i in CATALOG if not i.startswith('_') and i not in used and not i.startswith(dynamic)
                    and i not in ('state.started', 'state.done', 'state.skipped', 'result.ok', 'result.failed',
                                  'result.cancelled', 'reason.current', 'reason.not_needed', 'reason.not_chosen')]

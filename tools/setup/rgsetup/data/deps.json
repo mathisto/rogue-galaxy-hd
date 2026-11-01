@@ -1,0 +1,14 @@
+{
+  "comment": "The sources CMake would download while building (FetchContent), at the commits the tags in the build files resolve to. tools/make_release.py puts each in deps/<name> of a release (no .git), and setup.py then builds with FETCHCONTENT_FULLY_DISCONNECTED, so the install downloads nothing for the game. A new tag in a CMakeLists needs its commit here. The names are the FetchContent names.",
+  "deps": [
+    {"name": "elfio", "url": "https://github.com/serge1/ELFIO.git", "tag": "Release_3.12", "commit": "8ae6cec5d60495822ecd57d736f66149da9b1830", "license": "MIT"},
+    {"name": "fmt", "url": "https://github.com/fmtlib/fmt.git", "tag": "12.1.0", "commit": "407c905e45ad75fc29bf0f9bb7c5c2fd3475976f", "license": "MIT"},
+    {"name": "libdwarf", "url": "https://github.com/davea42/libdwarf-code.git", "tag": "", "commit": "2e088b983562860f497b4fd789a3e61524eb857c", "license": "LGPL-2.1 (the library; used by the recompiler tool only, not part of the game)"},
+    {"name": "nlohmann_json", "url": "https://github.com/nlohmann/json.git", "tag": "v3.11.3", "commit": "9cca280a4d0ccf0c08f47a99aa71d1b0e52f8d03", "license": "MIT"},
+    {"name": "rabbitizer", "url": "https://github.com/Decompollaborate/rabbitizer.git", "tag": "1.14.3", "commit": "d5804fa488474830a47fbf9f3693048ec1e45589", "license": "MIT"},
+    {"name": "toml11", "url": "https://github.com/ToruNiina/toml11.git", "tag": "v4.4.0", "commit": "be08ba2be2a964edcdb3d3e3ea8d100abc26f286", "license": "MIT"},
+    {"name": "glslang", "url": "https://github.com/KhronosGroup/glslang.git", "tag": "15.4.0", "commit": "8a85691a0740d390761a1008b4696f57facd02c4", "license": "BSD-3-Clause and others"},
+    {"name": "raylib", "url": "https://github.com/raysan5/raylib.git", "tag": "5.5", "commit": "c1ab645ca298a2801097931d1079b10ff7eb9df8", "license": "Zlib"},
+    {"name": "sdl3", "url": "https://github.com/libsdl-org/SDL.git", "tag": "release-3.2.24", "commit": "a8589a84226a6202831a3d49ff4edda4acab9acd", "license": "Zlib"}
+  ]
+}

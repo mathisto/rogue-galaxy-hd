@@ -163,7 +163,7 @@ class HdEvents(Base):
         self.assertEqual(st['error']['step'], 'gpu')
 
     def test_every_event_name_the_builder_prints_has_catalog_text(self):
-        names = json.loads((fk.REPO / 'tools' / 'setup' / 'rgsetup' / 'text' / 'en.json').read_text())
+        names = json.loads((fk.REPO / 'tools' / 'setup' / 'rgsetup' / 'text' / 'en.json').read_text(encoding='utf-8'))
         for sid in ('hd_textures', 'hd_movies'):
             for n in steps.HD_STAGES:
                 self.assertIn(f'phase.{sid}.stage_{n}', names)
