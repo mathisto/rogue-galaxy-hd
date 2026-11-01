@@ -1,10 +1,11 @@
 # The setup (`python -m rgsetup`)
 
-One program takes a player from "I have the game's disc" to a working game with the HD parts they chose. It has no
-window of its own: it prints one JSON event per line, and a log in words. `Install.bat` and `Build-HD-Pack.bat` are thin
-wrappers over it, and the window installer (phase 2) will be another. The code is `tools/setup/rgsetup/`; the sibling
+One program takes a player from "I have the game's disc" to a working game with the HD parts they chose. The engine has
+no window of its own: it prints one JSON event per line, and a log in words. `Install.bat` and `Build-HD-Pack.bat` are
+thin wrappers over it, and **the setup window** (`rgsetup/gui.py`, started by `RogueGalaxy-Setup.exe` in the release;
+see [The window](#the-window)) is another: it only draws those events. The code is `tools/setup/rgsetup/`; the sibling
 project's installer (`totk-pc-recomp/installer`, also MIT and by this project's author) is where the structure comes
-from: JSON events, step keys, resume as the same rule as update, a text catalog, exit codes.
+from: JSON events, step keys, resume as the same rule as update, a text catalog, exit codes, the window.
 
 ```
 python -m rgsetup --dest DIR [--source PATH] [--preset faithful|recommended|everything]
@@ -161,19 +162,88 @@ after each step. A newer `format` than the setup knows is `err.state_newer`; an 
   game by image name and by path under the install folder (`err.game_running`).
 - It does not put anything from the disc in the log, the state file or an event.
 
-## For the window (phase 2)
+## The window
 
-Start `python -m rgsetup` as a child with `CREATE_NEW_PROCESS_GROUP`, read stdout line by line, show the `plan` for
-the consent page (components with `disk.per_component`, `downloads`, `skipped_components`), pass `--yes` when the player
-confirms, send `CTRL_BREAK_EVENT` to cancel, and render ids through the same catalog (`events.load_catalog(lang)`,
-`events.render`). `--estimate` before the page gives the numbers without side effects. The one place that knows the
-folder layout and the toolchain is `layout.py` (`Layout`: `toolchain`, `python()`, `build_path()`, `setup_py_command()`,
-`hd_command()`); the bundled Python, compiler and runtime replace those, and `steps.ToolchainStep` becomes a no-op.
+`RogueGalaxy-Setup.exe` (a 60-line C program, `tools/setup/launcher/setup_launcher.c`, built with the bundled compiler,
+no console, the planet-and-arrow icon drawn by `tools/setup/make_icon.py`) starts
+`toolchain\python\pythonw.exe -X utf8 -m rgsetup.gui` in `tools\setup`. In a checkout: `python -m rgsetup.gui` from
+`tools/setup`. The window is `rgsetup/gui.py` (tkinter, ttk's `clam` theme, per-monitor DPI aware) over
+`rgsetup/guilogic.py` (everything it decides, without Tk, so the tests run it). It renders **only** what
+`python -m rgsetup` prints, and every sentence is an id of `text/en.json` (`ui.*`, plus the `step.*`, `phase.*`, `err.*`,
+`warn.*`, `component.*`, `preset.*` ids the log already uses), so a translation is a new `text/<lang>.json`.
+
+| Screen | What it shows | What it asks the CLI |
+|---|---|---|
+| Form | The disc (a field, **Choose file**, **Choose folder**, or drop a file or folder on the window), the install folder, the preset (Faithful, Recommended, Everything) and, under **Choose the parts yourself**, a tick per component with its disk and time; the free space of the folder's drive. A part this PC cannot do (no usable Vulkan graphics card) is greyed out with the reason (`ui.part_no_vulkan`, `ui.part_no_gpu`), and a preset that includes it too. A folder that already holds an install says so, shows what is installed (ticked and greyed: the setup never removes a part) and does not need the disc again. | `--estimate --preset everything` on the folder when the window opens: `plan.disk.per_component`, `plan.skipped_components`, `space`, `plan.skip.extract` |
+| Consent | What will be installed, the disk space and time (always "on the author's PC (Ryzen 9 7900X, RTX 5070 Ti)"), and **every download**: name, size, licence, address and SHA-256 (or "pip checks the package hashes"), in a list you can select and copy; a check box for `--gentle`. The button says **Download and start** when there are downloads, **Start** when not. Nothing starts before it. | `--estimate` with the choices and the disc: the same `plan`, and any `error` (a wrong disc, no space, a foreign folder) is shown on the form, in words, with what to do |
+| Run | The steps with a mark each (done, running, waiting, already done), the phase and its amount, a progress bar (moving while the size is unknown), the free-space line, warnings, **Show details** (the log in words), **Cancel** | `--yes` (and `--gentle`, `--components`, `--source`); Cancel sends Ctrl+Break to the child's process group and waits for it to end |
+| Finish | **Rogue Galaxy is ready** with **Play** (starts `Rogue Galaxy.exe`) and **Open folder**; or **The setup stopped** with the error, what to do, the log's path and **Try again**; or **Setup cancelled** | the `end` event and the exit code (0 / 1 / 3); a child that died without one is reported as stopped |
+
+Details worth knowing:
+
+- **Cancel.** The CLI child is started with `CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW`. The window has no console of
+  its own (pythonw), so a one-line helper process attaches to the child's hidden console and sends `CTRL_BREAK_EVENT`;
+  the CLI kills what it started and prints `end` with `cancelled`. Closing the window while it runs asks first, then does the same.
+- **The install folder.** The game is built where the program is (the release's own folder), so the folder field shows
+  that. **Change...** asks for an empty folder (a short path without spaces, not OneDrive, not a network drive: the same
+  rule as `err.path_*`), then copies the program there (about 2 GB: the toolchain, deps and sources, never `disc/`, `build/`,
+  `textures/`, `work/`, `mc0/`, `mc1/` or the state file) and opens the setup from the copy.
+- **Drag and drop** is `WM_DROPFILES` on the window (Tk has none): drop an image or a folder and it lands in the disc field.
+- **Looking at it.** `python -m rgsetup.gui --selftest [--shots DIR] [--scale 1.5]` builds every screen with sample
+  events (no CLI child, no disc), checks a few facts (the greyed boxes, the consent list, the log in words, a drop), and
+  closes itself. `--shots` writes a PNG per screen with `PrintWindow` from a fully transparent, never-activated window, so
+  it cannot take the focus from a game; `--scale 1.5` pretends the display is at 150 %. It needs Pillow only for `--shots`.
+- **Taller than the screen.** The form's content scrolls inside the window when the screen is too small for it; the buttons stay.
+
+## The release
+
+`python tools/make_release.py [--zip]` assembles `build/release/RogueGalaxy-Setup/` and, with `--zip`,
+`RogueGalaxy-Setup-<version>-<commit>-windows.zip` beside it (version from `CMakeLists.txt`, the commit as `git describe`,
+as `tools/release/source_zip.py` does; `--worktree` takes the working tree instead of the commit). The release bundles
+everything the install needs, so installing the game downloads nothing:
+
+```
+RogueGalaxy-Setup.exe     the window (starts toolchain\python\pythonw.exe -m rgsetup.gui)
+Setup-Console.cmd         the same setup in words on a console: Setup-Console.cmd --source "D:\disc.iso" --preset recommended
+README-FIRST.txt          four steps
+toolchain/                git (MinGit), python 3.12 with tkinter, cmake, ninja, llvm-mingw: the pins of rgsetup/data/toolchain.json,
+                          unpacked and stamped (.rg-sha256) exactly as the setup leaves them, so its toolchain step sees them
+                          as done; and pylibs/ (numpy and Pillow, installed with the bundled pip)
+deps/                     the sources CMake would download (rgsetup/data/deps.json, at their commits, without .git): setup.py
+                          then configures with FETCHCONTENT_FULLY_DISCONNECTED and FETCHCONTENT_SOURCE_DIR_<NAME>
+src/ cmake/ config/ patches/ thirdparty/ tools/ docs/ setup.py CMakeLists.txt README.md CHANGELOG.md LICENSE THIRD-PARTY-NOTICES.md
+VERSION REVISION release.json   the release string (0.1.0+commit), the commit the About window names, and every pin
+```
+
+Left out on purpose: `tests/`, `Install.bat`, `Build-HD-Pack.bat` and `tools/install/` (the window does their work), and anything from
+the disc. The three downloads that remain are on demand, pinned, SHA-256-checked and asked first: **Real-ESRGAN** (HD
+textures and movies), **FFmpeg** (HD movies, unless one is on PATH) and **chdman** (CHD discs only).
+
+**Nothing from the disc, no personal path.** `tools/check_content.py DIR [--disc DISC]` runs over the folder before it is
+zipped (and over the repository with no argument): it refuses disc images and the game's file types, the install folder's own
+folders and files (`disc/`, `build/`, `textures/`, `mc0/`, `rg-install.json`, `settings.ini`), any file whose size and
+SHA-256 are one of the disc's 124 files, with `--disc` any file holding a 32-byte run taken from inside the disc's big
+files, and any file holding the builder's user name, home or checkout path or e-mail (ASCII or UTF-16). The bundled tools
+are checked too (their names may end in `.dat`; their bytes and paths may not match). A hit fails the build.
+
+**Size.** GitHub allows 2 GiB for a release file. See [SESSION-NOTES-setup-window.md](SESSION-NOTES-setup-window.md) for the
+measured size; the largest part is llvm-mingw (about 700 MB unpacked, 180 MB zipped), then cmake and git; if it ever goes over,
+cut `toolchain/llvm-mingw` to the x86_64 target (drop `i686-w64-mingw32`, `aarch64-w64-mingw32`, `armv7-w64-mingw32`, about 40 %).
+
+**Updating** is the same rule as resuming: unpack the newer release over the folder (the zip holds none of `disc/`, `build/`,
+`textures/`, `mc0/`, `mc1/`, `work/` or `rg-install.json`, so they are kept), run `RogueGalaxy-Setup.exe`, and the plan says
+what is already done. The build runs again, because every source file is newer; the extraction and the HD packs are kept.
+
+**Licences.** The release bundles MinGit (GPL-2.0), Python (PSF-2.0), CMake (BSD-3-Clause), Ninja and llvm-mingw
+(Apache-2.0 with LLVM exceptions), numpy and Pillow, and the dependency sources; THIRD-PARTY-NOTICES.md has a row for each,
+and the release's source for the GPL parts is the pinned upstream archive named there. Windows will say the program is from
+an unknown publisher (it is not code-signed); [SHARING.md](SHARING.md) says what to tell people.
 
 ## Tests
 
 `python -m unittest discover -s tests -p "test_setup_*.py"`: events, presets and the disk/time math, step keys and
 resume (a fake step list), disc validation on tiny synthetic ISOs and folders (no game bytes anywhere), BIN/CUE
-conversion, settings, the CLI on a stand-in program folder, Ctrl+Break, and a check that every message id the code can
-emit is in `text/en.json` with the placeholders it fills. `python tests/e2e_setup.py --scratch DIR --iso FILE` is the
+conversion, settings, the CLI on a stand-in program folder, Ctrl+Break, a check that every message id the code can
+emit is in `text/en.json` with the placeholders it fills, the window's logic (form commands, event folding, every `ui.*`
+id used exists) and its self test, and the content scanner. `python tests/e2e_setup.py --scratch DIR --iso FILE` is the
 end-to-end run with a real disc in a clean clone ([SESSION-NOTES-setup.md](SESSION-NOTES-setup.md) has its results).
