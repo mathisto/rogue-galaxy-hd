@@ -139,7 +139,9 @@ def check(args):
     needles = needles_from_disc(args.disc) if args.disc else {}
     personal = personal_patterns(args.extra or ())
     bad = []
-    for p in files:
+    for i, p in enumerate(files):
+        if i % 2500 == 0 and os.environ.get('RG_SCAN_VERBOSE'):
+            print(f'  {i}/{len(files)} {p.relative_to(base)}', flush=True)
         try:
             for problem in problems_for(p, base, sizes, needles, personal, repo_mode=not args.folder):
                 bad.append(f'{p.relative_to(base)}: {problem}')

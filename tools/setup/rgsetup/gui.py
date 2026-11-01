@@ -934,7 +934,11 @@ def drain(job, on_event, on_raw=None):
 def grab(root, path):
     """The window's pixels without bringing it to the front: PrintWindow, so a window placed off screen (or behind a
     game) is captured the same. Needs Pillow; only the developer's --shots uses it."""
-    from PIL import Image
+    try:
+        from PIL import Image
+    except ImportError:         # the release keeps Pillow in toolchain/pylibs, for the HD builder
+        sys.path.append(str(layouts.ROOT / 'toolchain' / 'pylibs'))
+        from PIL import Image
     from ctypes import wintypes
     user32, gdi32 = ctypes.windll.user32, ctypes.windll.gdi32
     hwnd = user32.GetParent(root.winfo_id()) or root.winfo_id()
@@ -1023,6 +1027,7 @@ def selftest(layout, shots=None, scale=None):
         quiet_window(root)
     app = App(root, layout, scale=scale, start_probe=False)
     fails = []
+    root.report_callback_exception = lambda kind, value, tb: fails.append(repr(value))
     shots_dir = Path(shots) if shots else None
     if shots_dir:
         shots_dir.mkdir(parents=True, exist_ok=True)
@@ -1166,6 +1171,13 @@ def live(layout, scenario, source=None, shots=None, preset='faithful', gentle=Tr
         quiet_window(root)
     app = App(root, layout)
     out = {'scenario': scenario, 'steps': []}
+
+    def boom(kind, value, tb):          # unattended: a bug ends the run, a dialog would hang it
+        import traceback
+        traceback.print_exception(kind, value, tb)
+        out['exception'] = repr(value)
+        finish(1)
+    root.report_callback_exception = boom
     shots_dir = Path(shots) if shots else None
     if shots_dir:
         shots_dir.mkdir(parents=True, exist_ok=True)
@@ -1190,7 +1202,7 @@ def live(layout, scenario, source=None, shots=None, preset='faithful', gentle=Tr
                 app.form.set_preset(preset)
                 app.form.gentle = gentle
                 app.refresh_form()
-                app.do_review()
+                app.review_button.invoke()          # the button's own command, as a click runs it
                 state['phase'] = 'review'
         elif ph == 'review':
             if app.review_job is None:
@@ -1201,7 +1213,7 @@ def live(layout, scenario, source=None, shots=None, preset='faithful', gentle=Tr
                     shot('2-consent')
                     if scenario == 'review':
                         return finish(0)
-                    app.start()
+                    app.start_button.invoke()
                     state['phase'] = 'run'
                 else:
                     out['form_error'] = app.error_label.cget('text')
@@ -1213,7 +1225,7 @@ def live(layout, scenario, source=None, shots=None, preset='faithful', gentle=Tr
                 state['cancel_at'] = now + 5
             if state['cancel_at'] and now >= state['cancel_at'] and app.job and app.job.cancelled_at is None:
                 shot('3-running')
-                app.cancel()
+                app.cancel_button.invoke()
             if app.screen == 'finish':
                 out['result'] = m.result
                 out['exit'] = m.exit_code
