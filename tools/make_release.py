@@ -159,6 +159,7 @@ def build_pylibs(out):
     if r.returncode:
         sys.exit('pylibs do not import with the bundled python:\n' + r.stderr)
     say(r.stdout.strip())
+    shutil.rmtree(libs / 'bin', ignore_errors=True)       # console scripts: their launchers hold the path of the machine that built them
     return r.stdout.strip()
 
 
@@ -240,7 +241,7 @@ def check_bundle(out):
 def scan(out, disc):
     class A:
         folder = str(out)
-        extra = ['themattkellyshow']
+        extra = [e for e in (subprocess.run(['git', 'config', 'user.email'], cwd=ROOT, capture_output=True, text=True).stdout.strip(),) if e]
 
     A.disc = str(disc) if disc and Path(disc).is_dir() else None
     n, bad, needles = check_content.check(A)

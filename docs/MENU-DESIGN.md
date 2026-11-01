@@ -21,7 +21,7 @@ chosen or switched on, the triangle cursor, Roboto, the HD font. The
 behaviour of every setting, and every `settings.ini` key and value: nothing
 was renamed or removed, only labels, grouping, order and layout. Environment
 variables and `RG_UI_SCRIPT` commands still work (the page names `display`,
-`sound`, `controls`, `game`, `interface`, `cheats` are as before).
+`sound`, `controls`, `game`, `interface`, `setup`, `cheats` are as before).
 
 ## Critique of the menu as it was (2026-10-29)
 
@@ -68,6 +68,24 @@ opt-in, last; L1 and R1 turn them in this order):
 | Old | New |
 |---|---|
 | Display, Sound, Controls, Game, **Cheats, Interface** | Display, Sound, Controls, Game, **Interface, Cheats** |
+
+**Setup and HD** (added with the setup window, 2026-11-01) sits between Interface and Cheats: Display, Sound, Controls, Game,
+Interface, Setup and HD, Cheats. It follows the same rules, with two sections of `settingRow`s and no setting of its own (it
+changes nothing in `settings.ini`):
+
+| Section | Row | Control | Where the value comes from |
+|---|---|---|---|
+| What is installed | HD textures | "11,072 pictures", or "Not installed" | the replacement store's file count (`GsReplacementStore::fileCount`), what the game itself found in `textures/SCUS-97490/replacements` |
+| | HD movies | "89 of 89", or "Not installed" | `rg::hdmovie::fileCount()` of `textures/SCUS-97490/movies` against the disc's 89 |
+| | Font, Button prompts | the current choice (Original / Modern; PlayStation / Xbox / Auto) | the Game page's own options |
+| | Installed by | "Setup 0.1.0", or "Not recorded" | `release` in `rg-install.json` (absent for a folder the old `Install.bat` made) |
+| Add or change | Run the setup | button **Open the setup**; disabled, with a tooltip, when `RogueGalaxy-Setup.exe` is not in the game's folder (a developer's checkout) | starts the exe detached; a toast says it is opening |
+
+Each row's help is one line that says where to change the thing ("Switch them on or off under Game > Texture
+replacements"); the long note (the setup opens in its own window, it keeps saves and settings, HD parts need Vulkan) is the
+button's tooltip. The page reads the folder again every two seconds while it is shown, so it follows the setup finishing
+behind it. `RG_UI_SCRIPT` names the page `setup`. Checked at 1280x720, 1920x1080, 1280x960 and 960x540 with `rowcheck`: 0 of 6
+rows overlap at each (docs/SESSION-NOTES-setup-window.md).
 
 Display
 

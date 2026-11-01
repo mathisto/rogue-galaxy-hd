@@ -48,9 +48,27 @@ The repository's `.gitignore` already leaves out `/disc/`, `*.iso`, `/mc0/`,
 `*.log`, so a plain `git add -A` does not take them. `Rogue Galaxy.exe` (the
 launcher) is ignored too.
 
+## The release zip
+
+`python tools/make_release.py --zip` makes `RogueGalaxy-Setup-<version>-<commit>-windows.zip`: the setup window, the build
+tools and the sources, and nothing from any disc (docs/INSTALLER.md, "The release"). It may be shared, because it holds only
+what the rows above allow plus pinned third-party tools under their own licences (THIRD-PARTY-NOTICES.md). Before you upload one:
+
+1. `tools/make_release.py` ran `tools/check_content.py` over the folder and it printed `no hit`. Run it with
+   `--disc` pointing at your unpacked disc (read only) so it also looks for runs of the disc's bytes: the builder does this on its own when a `disc/` folder is beside it.
+2. Unzip it in a scratch folder and run `Setup-Console.cmd --estimate` there: the plan must list no download for the game
+   (only Real-ESRGAN, FFmpeg and chdman, and only when the choice needs them).
+3. Say in the release text that the program is **not code-signed**. Windows SmartScreen shows "Windows protected your PC /
+   Unknown publisher" for a program it has not seen often: that is not a finding about the file. Tell people to download
+   only from the release page of the repository, to compare the SHA-256 the page lists, and then use "More info", "Run
+   anyway". Signing needs a certificate (a yearly cost) and still shows the warning until the program has a reputation;
+   it is the author's decision whether to buy one.
+4. Name the commit (the zip's name and `REVISION` do) and attach the source: `tools/release/source_zip.py` makes the source zip
+   the GPL asks for, and the release bundles the pinned upstream sources of its GPL parts (MinGit) by link in THIRD-PARTY-NOTICES.md.
+
 ## Sharing HD packs between friends
 
-Do not. Ask them to run `Build-HD-Pack.bat`: it takes a few hours of waiting
+Do not. Ask them to run the setup (**Everything**, or `Build-HD-Pack.bat`): it takes a few hours of waiting
 and nothing else, and the result is bit for bit the one you have (the models and
 the steps are fixed). That is the whole reason the pipeline is a one-click
 builder and not a download.

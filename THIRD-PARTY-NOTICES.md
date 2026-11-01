@@ -25,6 +25,7 @@ by them or by any project named below.
 | **AMD FidelityFX Super Resolution 1.0** (EASU and RCAS) | `thirdparty/dq8-gfx/src/gfx/backends/sdlgpu/shaders/present_easu.frag`, `present_rcas.frag`: written out again in plain GLSL | MIT, Copyright (c) 2021 Advanced Micro Devices, Inc. | Stated in the headers of both shader files. |
 | **PCSX2** (GameDB, widescreen and 60 fps patch notes) and **Red-tv's 60 fps pnach** for the PAL release | Facts only (addresses, field names, what the patch changes) in `docs/sixty-fps-logic.md` and comments; no PCSX2 code and no pnach text | PCSX2: GPL-3.0. The pnach: no licence stated where it was read; not checked further | Used as a reference and credited; nothing is copied. |
 | **totk-pc-recomp installer** (`installer/`: `events.py`, `state.py`, `runner.py`, `cli.py`) by this project's author | `tools/setup/rgsetup/events.py`, `state.py`, `runner.py` and `cli.py` follow its structure (JSON progress events, step keys that make resume and update one rule, a text catalog of ids, exit codes 0/1/2/3 with cancel by Ctrl+Break) and adapt parts of its code; the rest is written for this project | MIT (the author's own project; the combination here is GPL-3.0) | Credited as the design source; no other code from it. |
+| **totk-pc-recomp installer window and release builder** (`installer/gui.py`, `guilogic.py`, `launcher/launcher.c`, `tools/make_release.py`, `tools/check_content.py`) by this project's author | `tools/setup/rgsetup/gui.py` and `guilogic.py` (the screens, the event model, the child process with Ctrl+Break cancel, the self test with screenshots), `tools/setup/launcher/setup_launcher.c`, `tools/make_release.py` (the release folder and zip) and `tools/check_content.py` (the content scanner) adapt their structure and parts of their code; the screens, the text, the consent page, the per-component choice, the drag and drop and the scanner's disc checks are written for this project | MIT (the author's own project; the combination here is GPL-3.0) | Credited as the design source; no other code from it. |
 | **Redump** | Disc size and hashes in `docs/DISC.md` and `config/SCUS_974.90/hashes.json` | Facts about a disc image | No data from the disc itself. |
 
 The launcher's icon (`src/launcher/rogue-galaxy.ico`) is drawn by
@@ -45,6 +46,22 @@ boxes (positions in the game's own pictures), never pixels.
 | **raylib** 5.5 (and, with the debug UI, rlImGui) | CMake, from PS2Recomp's runtime project | zlib | Not examined further: the game's window and renderer are SDL3 and `dq8-gfx`. |
 | **llvm-mingw / LLVM**, **CMake**, **Ninja**, **MinGit**, **Python** (python-build-standalone) | `Install.bat`, into `toolchain/`, SHA-256 pinned | Apache-2.0 with LLVM exceptions, BSD-3-Clause, Apache-2.0, GPL-2.0, PSF | Build tools; nothing from them is in the game. |
 | **numpy**, **Pillow** (13.0.0 or later) | the setup program or `Build-HD-Pack.bat` (pip), into `toolchain/pylibs`, for the HD pack tools, after a yes | BSD-3-Clause, MIT-CMU (HPND) | Used by the Python tools in `tools/hd/`; not distributed with the project. Pillow 13.0.0 is the floor because older releases have known critical vulnerabilities. |
+
+## Bundled in the Windows release zip (`tools/make_release.py`)
+
+`RogueGalaxy-Setup-<version>-windows.zip` carries these pinned files so that installing the game downloads nothing. The pins
+(addresses, SHA-256 of each archive, commits) are in `tools/setup/rgsetup/data/toolchain.json` and `deps.json`, and
+`release.json` in the zip lists what was bundled. None of it is part of the game's own code except where a library is linked
+into it (SDL3, raylib: zlib licence), which the built game's source offer below covers.
+
+| Component | Licence | Notes |
+|---|---|---|
+| **MinGit** 2.56.0 (Git for Windows), from <https://github.com/git-for-windows/git/releases/tag/v2.56.0.windows.2> | GPL-2.0 (Git), with LGPL and other parts as in its own `LICENSE` | Used by the build for `git apply` of the patches. **Source for it:** the same release's source archive and <https://github.com/git-for-windows/git>, at that tag; this project makes no change to it. |
+| **Python** 3.12.13, python-build-standalone 20260807 (Astral), with Tcl/Tk (tkinter) | PSF-2.0; Tcl/Tk: the Tcl licence (BSD-style) | Runs the setup, its window and the build scripts. |
+| **CMake** 3.31.12, **Ninja** 1.13.2 | BSD-3-Clause; Apache-2.0 | Build tools. |
+| **llvm-mingw** 20260616 (LLVM 22.1.8, mingw-w64, libc++) by Martin Storsjo | Apache-2.0 with LLVM exceptions; mingw-w64 and others permissive as in its `LICENSE.TXT` | The compiler the game is built with. |
+| **numpy**, **Pillow** 13.0.0 (installed with the bundled pip into `toolchain/pylibs`) | BSD-3-Clause and others; MIT-CMU (HPND) | For the HD builder, which is where the Pillow floor of the note above comes from. |
+| Dependency sources in `deps/` (no `.git`): **SDL3** release-3.2.24, **raylib** 5.5 (Zlib); **glslang** 15.4.0 (BSD-3-Clause and others); **fmt** 12.1.0, **toml11** v4.4.0, **ELFIO** Release_3.12, **nlohmann/json** v3.11.3, **rabbitizer** 1.14.3 (MIT); **libdwarf** 2.2.0 (LGPL-2.1 for the library, others per file) | as listed | What CMake would download while building; the recompiler tool (fmt, toml11, ELFIO, nlohmann/json, rabbitizer, libdwarf) is built on the player's PC and is not part of the game. libdwarf is only linked into that tool. |
 
 ## Downloaded by the HD pack builder (`Build-HD-Pack.bat`), on request
 

@@ -41,28 +41,39 @@ disc image; nothing of the game is distributed.
 
 ## Install (Windows)
 
-You need Windows 10 or 11 (64-bit), about 16 GB free, an internet connection
+You need Windows 10 or 11 (64-bit), about 18 GB free, an internet connection (only for the HD parts)
 and your own image of the disc: Rogue Galaxy, USA, SCUS-97490
 ([`docs/DISC.md`](docs/DISC.md)).
 
-1. Download `RogueGalaxy-<version>.zip` from the [releases](../../releases)
-   page (not "Source code").
-2. Extract it to a short folder, such as `C:\RogueGalaxy`.
-3. Double-click `Install.bat` and choose your disc image (an `.iso`, a
-   `.bin`/`.cue`, a `.chd`, or a folder with the disc's files).
-4. Wait about 20 minutes on a fast PC, up to an hour on a slower one: it
-   downloads the build tools (about 300 MB) into the folder, extracts your
-   disc and builds the game. Nothing is installed in Windows.
-5. Play with `Rogue Galaxy.exe`.
+1. Download `RogueGalaxy-Setup-<version>-<commit>-windows.zip` from the
+   [releases](../../releases) page (not "Source code") and unpack the whole
+   thing to a short folder with room to spare, such as `C:\RogueGalaxy`
+   (about 18 GB for the game, 40 GB or more with the HD parts).
+2. Double-click **`RogueGalaxy-Setup.exe`**. Windows may warn that it comes
+   from an unknown publisher, because the program is not code-signed: choose
+   "More info", then "Run anyway", if you trust where you got it.
+3. Choose your disc image (an `.iso`, `.bin`/`.cue`, `.chd`, or a folder with
+   the disc's files; you can drop it on the window) and what to install:
+   **Faithful** (the game only), **Recommended** (the game, HD textures, the
+   modern font with Xbox prompts) or **Everything** (also the HD movies), or
+   pick the parts one by one, each with its disk space and time. The window
+   lists every file it would download, with its address, size, SHA-256 and
+   licence, and waits for your yes; the game itself needs no download, the
+   build tools are in the zip. Building the game takes about 20 to 25 minutes
+   on a fast PC (the author's: Ryzen 9 7900X, RTX 5070 Ti), up to an hour on
+   a slower one; the HD parts add more, as the window says. You can use the
+   PC meanwhile, and **Cancel** keeps what is finished.
+4. Press **Play**, or later double-click `Rogue Galaxy.exe`. To add the HD
+   parts later, or to update, run `RogueGalaxy-Setup.exe` again (F1 > Setup
+   and HD in the game opens it too); to update, unpack the newer zip over the
+   folder first. Nothing is installed in Windows; to uninstall, delete the
+   folder (your saves are in `disc\mc0`).
 
-`Install.bat` and `Build-HD-Pack.bat` are wrappers over the setup program,
-`python -m rgsetup` ([docs/INSTALLER.md](docs/INSTALLER.md)), which also does it
-in one go, with a choice of **Faithful** (the game only), **Recommended** (the
-game, HD textures, the modern font with Xbox prompts) or **Everything** (also
-the HD movies), shows the disk space and time first, and updates an existing
-folder when you run a newer one on it:
-`python -m rgsetup --dest C:\RogueGalaxy --source "Rogue Galaxy (USA).iso" --preset recommended`
-(from `tools\setup`; add `--estimate` to see the plan and change nothing).
+The window is a front end over the setup program, `python -m rgsetup`
+([docs/INSTALLER.md](docs/INSTALLER.md)), which also runs without it
+(`Setup-Console.cmd` in the zip). In a source checkout, `Install.bat` and
+`Build-HD-Pack.bat` do the same after downloading the build tools (about 300
+MB); a source zip or checkout is for developers, players want the release.
 
 ### HD textures and HD movies (optional)
 

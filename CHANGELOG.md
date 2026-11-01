@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+- Setup window and a release that needs no download for the game:
+  `RogueGalaxy-Setup.exe` (a small no-console launcher) opens a window to
+  choose the disc (ISO, BIN/CUE, CHD or a folder; drop it on the window),
+  the install folder and Faithful, Recommended or Everything, or each part
+  with its disk space and time; HD parts this PC cannot do (no Vulkan card)
+  are greyed out with the reason. A review page lists every download with its
+  address, size, SHA-256 and licence before anything starts; then a step list
+  with progress, the free space, a log you can open, Cancel (Ctrl+Break to the
+  setup, which keeps what is finished), and a finish page with Play and Open
+  folder. The window draws only the events of `python -m rgsetup`; its words
+  are ids of the same text catalog. `tools/make_release.py` builds the release
+  folder and zip: the pinned build tools (MinGit, Python with tkinter, CMake,
+  Ninja, llvm-mingw), numpy and Pillow, and the sources CMake would download
+  (`deps/`, `setup.py` builds from them without the network) come in the zip;
+  Real-ESRGAN, FFmpeg and chdman stay on-demand, pinned downloads.
+  `tools/check_content.py` fails the build when disc-derived bytes or personal
+  paths are in it. Updating is unpacking the newer zip over the folder and
+  running the setup again. F1 > **Setup and HD** shows what is installed (HD
+  textures and how many, HD movies N of 89, the font and button prompts) and
+  opens the setup window.
+
 - Setup program: `python -m rgsetup` (tools/setup, docs/INSTALLER.md) is the
   one engine behind `Install.bat` and `Build-HD-Pack.bat`, which are now thin
   wrappers (old options still work or print their new equivalent). It prints
