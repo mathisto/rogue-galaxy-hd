@@ -40,3 +40,7 @@ Thumbs.db
 
 # HD pack builder: everything it makes from the disc (tools/hd, Build-HD-Pack.bat).
 /work/
+
+# The setup (tools/setup, Install.bat): what it finished in this folder.
+/rg-install.json
+/rg-install.json.tmp

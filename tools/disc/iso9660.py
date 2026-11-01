@@ -49,10 +49,14 @@ class IsoImage:
         self.size = self.path.stat().st_size
         self.total_sectors = self.size // SECTOR
         self._f: BinaryIO = open(self.path, "rb")
-        self.volumes = [self._read_volume(0, 0)]
-        layer1 = self._find_layer1(self.volumes[0].blocks)
-        if layer1 is not None:
-            self.volumes.append(self._read_volume(1, layer1))
+        try:
+            self.volumes = [self._read_volume(0, 0)]
+            layer1 = self._find_layer1(self.volumes[0].blocks)
+            if layer1 is not None:
+                self.volumes.append(self._read_volume(1, layer1))
+        except BaseException:
+            self._f.close()     # not a disc image: do not leave the file open (Windows cannot delete an open file)
+            raise
 
     def close(self) -> None:
         self._f.close()

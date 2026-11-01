@@ -74,6 +74,7 @@ EST_MOVIES = ('about 1.5 hours', "the author's RTX 5070 Ti; the 89 movies are ab
 LOG_PATH = None
 CHILDREN = set()
 STATE = None
+EVENTS = False     # --events: machine-readable lines (see evt) beside the human text, for tools/setup (rgsetup)
 
 
 # ---------------------------------------------------------------- output
@@ -88,6 +89,13 @@ def say(msg='', file_only=False):
     if LOG_PATH:
         with open(LOG_PATH, 'a', encoding='utf-8') as f:
             f.write(line + '\n')
+
+
+def evt(**fields):
+    """With --events, one line '@@RG {json}' on stdout: ev = stage | phase | download | error. The setup program
+    (tools/setup, docs/INSTALLER.md) turns them into its own events; the human text is unchanged."""
+    if EVENTS:
+        print('@@RG ' + json.dumps(fields, ensure_ascii=False), flush=True)
 
 
 class BuildError(Exception):
@@ -376,6 +384,7 @@ def ensure_tool(spec, env, yes, why):
     say('  SHA-256 : ' + spec['sha256'] + ' (the download is refused if it differs)')
     say('  licence : ' + spec['license'])
     say('  goes to : ' + base + ' (nothing is installed in Windows)')
+    evt(ev='download', tool=spec['dir'], state='asked', name=spec['name'], url=spec['url'], mb=spec['mb'])
     if not ask('Download it now?', False, yes):
         raise BuildError('download', 'the download of %s was not accepted' % spec['name'],
                          'Run this again and answer y, or put the tool in %s yourself.' % base)
@@ -398,6 +407,7 @@ def ensure_tool(spec, env, yes, why):
                     if time.time() - shown > 5:
                         shown = time.time()
                         say('  downloading %d of %d MB' % (got >> 20, total >> 20))
+                        evt(ev='download', tool=spec['dir'], state='progress', done=got, total=total)
         except Exception as ex:
             raise BuildError('download', 'downloading %s failed: %s' % (spec['name'], ex),
                              'Check the internet connection and run this again (it starts over).')
@@ -407,6 +417,7 @@ def ensure_tool(spec, env, yes, why):
                              'Run this again; if it repeats, something on this network alters downloads. Nothing was unpacked.')
         os.replace(part, zpath)
     say('  unpacking %s' % spec['name'])
+    evt(ev='download', tool=spec['dir'], state='unpacking')
     shutil.rmtree(base, ignore_errors=True)
     os.makedirs(base, exist_ok=True)
     with zipfile.ZipFile(zpath) as z:
@@ -539,13 +550,16 @@ def prepare_tools(env, mode, a):
 def step(name, label, env, fn, force=False):
     if STATE.done(name) and not force:
         say('[skip] %s (done earlier; --redo %s to repeat)' % (label, name))
+        evt(ev='stage', name=name, state='skipped')
         return
     say('[....] %s' % label)
+    evt(ev='stage', name=name, state='started')
     t0 = time.time()
     fn()
     dt = time.time() - t0
     STATE.mark(name, secs=round(dt))
     say('[done] %s in %s' % (label, human(dt)))
+    evt(ev='stage', name=name, state='done', seconds=round(dt))
 
 
 def must(rc, last, step_name, hint=''):
@@ -826,16 +840,22 @@ def build_textures(env, a):
     step('keys', 'Computing the renderer\'s texture keys', env, stage_keys(env, a))
     step('merge', 'Merging the pictures and classifying them', env, stage_merge(env, a))
     say('[....] Upscaling')
+    evt(ev='stage', name='upscale', state='started')
     t0 = time.time()
     stage_upscale(env, a)
     say('[done] Upscaling in %s' % human(time.time() - t0))
+    evt(ev='stage', name='upscale', state='done', seconds=round(time.time() - t0))
     say('[....] Checking for black upscales (fp16)')
+    evt(ev='stage', name='fp16', state='started')
     stage_fp16(env, a)
     say('[....] Building the pack')
+    evt(ev='stage', name='pack', state='started')
     stage_pack(env, a)
     say('[....] Verifying the pack')
+    evt(ev='stage', name='verify', state='started')
     stage_verify_textures(env, a)
     say('[done] HD textures: %s' % os.path.join(env.out, 'replacements'))
+    evt(ev='stage', name='textures', state='done')
 
 
 # ---------------------------------------------------------------- movies
@@ -865,6 +885,7 @@ def build_movies(env, a):
     if a.retry_failed:
         cmd.append('--retry-failed')
     say('[....] Upscaling the movies (each movie: decrypt, upscale 2x frame by frame, encode HEVC)')
+    evt(ev='stage', name='movies', state='started')
     say('       log: ' + os.path.join(work, 'batch.log'))
     t0 = time.time()
     env2 = child_env({'RG_FFMPEG_DIR': find_ffmpeg(env)})
@@ -899,6 +920,7 @@ def build_movies(env, a):
         elif v.get('status') == 'failed':
             failed.append((rel, v.get('error', '')))
     say('[done] %d movies in %s' % (n, dest))
+    evt(ev='stage', name='publish', state='done', movies=n)
     verify_movies(env, a, dest, st, wanted)
     if failed:
         for rel, err in failed:
@@ -978,7 +1000,10 @@ def main(argv=None):
     ap.add_argument('--skip-space-check', action='store_true')
     ap.add_argument('--clean-work', action='store_true', help='when done, delete the work files (the pack and movies stay)')
     ap.add_argument('--test-stall', action='store_true', help=argparse.SUPPRESS)
+    ap.add_argument('--events', action='store_true', help='also print machine-readable "@@RG {json}" lines (for tools/setup)')
     a = ap.parse_args(argv)
+    global EVENTS
+    EVENTS = a.events
 
     env = Env(a)
     STATE = State(env.p('state.json'))
@@ -1045,6 +1070,7 @@ def main(argv=None):
             say('Work files deleted.')
         return 0
     except BuildError as e:
+        evt(ev='error', step=e.step, what=e.what, hint=e.hint)
         say()
         say('STOPPED at step "%s": %s' % (e.step, e.what))
         if e.hint:
