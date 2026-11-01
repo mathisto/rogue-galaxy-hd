@@ -179,6 +179,11 @@ no console, the planet-and-arrow icon drawn by `tools/setup/make_icon.py`) start
 | Run | The steps with a mark each (done, running, waiting, already done), the phase and its amount, a progress bar (moving while the size is unknown), the free-space line, warnings, **Show details** (the log in words), **Cancel** | `--yes` (and `--gentle`, `--components`, `--source`); Cancel sends Ctrl+Break to the child's process group and waits for it to end |
 | Finish | **Rogue Galaxy is ready** with **Play** (starts `Rogue Galaxy.exe`) and **Open folder**; or **The setup stopped** with the error, what to do, the log's path and **Try again**; or **Setup cancelled** | the `end` event and the exit code (0 / 1 / 3); a child that died without one is reported as stopped |
 
+![The form](images/setup-form.png) ![The consent page](images/setup-consent.png)
+![Running](images/setup-run.png) ![Finished](images/setup-finish.png)
+
+(Made by `--selftest --dest C:\RogueGalaxy --shots DIR`: the sample events of the self test, at 100 % scale.)
+
 Details worth knowing:
 
 - **Cancel.** The CLI child is started with `CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW`. The window has no console of
@@ -226,7 +231,7 @@ SHA-256 are one of the disc's 124 files, with `--disc` any file holding a 32-byt
 files, and any file holding the builder's user name, home or checkout path or e-mail (ASCII or UTF-16). The bundled tools
 are checked too (their names may end in `.dat`; their bytes and paths may not match). A hit fails the build.
 
-**Size.** GitHub allows 2 GiB for a release file. The first real build (commit 9f6ceae) is **413.9 MiB zipped, 1347 MiB
+**Size.** GitHub allows 2 GiB for a release file. The first real build (commit 3879af1) is **413.9 MiB zipped, 1347 MiB
 unpacked**: `toolchain/` 1102 MiB (llvm-mingw is most of it, then cmake, git, python), `deps/` 212 MiB, `thirdparty/` 29 MiB,
 everything else under 3 MiB. It is a quarter of the limit. If it ever goes over, the first cut is `toolchain/llvm-mingw` to the
 x86_64 target (drop `i686-w64-mingw32`, `aarch64-w64-mingw32`, `armv7-w64-mingw32`), then cmake's `doc/` and `share/`.

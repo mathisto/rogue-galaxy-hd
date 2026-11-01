@@ -67,9 +67,9 @@ author); THIRD-PARTY-NOTICES.md says what was adapted.
    source 1.1 s, extract 44 s, **build 645 s (10.8 min)**, exit 0, "Rogue Galaxy is ready". With `RG_SETUP_FAKE_VULKAN` set to `none`
    or `software` (in a folder without HD parts), the HD parts are greyed out with the reason and the preset falls back to Faithful; with a
    fake RTX card they are offered.
-5. **The release**: `python tools/make_release.py --zip` built `@@ZIPNAME@@`: **@@ZIPSIZE@@** (@@ZIPBYTES@@ bytes; the GitHub limit is
-   2 GiB), **@@UNPACKED@@ unpacked** (toolchain 1102 MiB, deps 212, thirdparty 29, the rest under 3), SHA-256 `@@SHA@@`.
-   `check_content` ran over all 31,607 files with the disc's 41 byte runs: no hit. It caught two real leaks on the way, the
+5. **The release**: `python tools/make_release.py --zip` built `RogueGalaxy-Setup-0.1.0-3879af1-windows.zip`: **413.9 MiB** (433,971,987 bytes; the GitHub limit is
+   2 GiB), **1347 MiB unpacked** (toolchain 1102 MiB, deps 212, thirdparty 29, the rest under 3), SHA-256 `999d1d216352c150ce86b43a9469a34415e162c15b6cd02a0d2f642719d83030`.
+   `check_content` ran over all 31,597 files with the disc's 41 byte runs: no hit. It caught two real leaks on the way, the
    console-script launchers in `pylibs/bin` that embed the builder's Python path, and an e-mail address in the script itself; both
    fixed. The bundled Python (3.12.13 with tkinter 8.6) ran the window's self test and the setup's own check, and the setup recognised
    the unpacked toolchain: no download for the game in the plan.
@@ -85,7 +85,13 @@ author); THIRD-PARTY-NOTICES.md says what was adapted.
    value sat 6 px above its label; `AlignTextToFramePadding` fixed it and was re-checked.
 8. **Short paths**: the setup's own rule fired on my first release folder (`build\release\RogueGalaxy-Setup`, 63 characters, limit 60:
    `err.path_long`), which is why the release check ignores `err.path_*` errors and why the README says "a short folder".
-@@FINAL@@
+9. **The final zip itself** (`...-3879af1-windows.zip`, unpacked fresh into `Q:\work\rgrel2`): the window's `--live run` with Faithful
+   and the real ISO built the whole game offline, **exit 0, "Rogue Galaxy is ready"**: source 0.5 s, extract 15 s, build **826 s**
+   (13.8 min, with the owner's game running and my other work competing, at below-normal priority). **Then `--estimate` on the same
+   folder: `plan.run` is `check,finish`, `build=current`**, i.e. a second run does nothing (the key fix, on the real first-run path).
+   The game built there, run hidden from that folder, shows F1 > Setup and HD with "Not installed" for both HD parts, Original,
+   Auto, "Setup 0.1.0" (read from `rg-install.json`) and **Open the setup enabled** (`RogueGalaxy-Setup.exe` is there);
+   `rowcheck`: 6 rows, 0 overlapping. Four of the window's screens are in `docs/images/setup-*.png` (INSTALLER.md).
 
 ## Bugs
 
@@ -102,10 +108,14 @@ author); THIRD-PARTY-NOTICES.md says what was adapted.
 
 - **Real clicks, a real mouse, a real display scale**: buttons were pressed with Tk's `invoke()` and 150 % was Tk's `scaling`, not a
   monitor at 150 %; drag and drop was a posted `WM_DROPFILES` message, not a drag from Explorer.
-@@LAUNCH@@
+- **`RogueGalaxy-Setup.exe` itself, started by double-click, and its missing-Python message.** It compiled with the bundled clang and
+  the window it starts (`pythonw.exe -m rgsetup.gui`) was exercised by `--live` and `--selftest` with the same interpreter, but the
+  exe was never run: the owner's game was running from 3:50 PM until the end of the session, and a visible window could take its
+  focus. Run it once yourself; if it shows nothing, `toolchain\python\pythonw.exe -X utf8 -m rgsetup.gui` from `tools\setup` is
+  what it runs.
 - **Play** and **Open folder** on the finish page, **Change...** (only the list of what it would copy was computed: 31,607 files,
-  1.3 GiB, none of `disc`, `build`, `textures`, `work`, `mc0`, `mc1`, the state file), and **Open the setup** in the game (the enabled
-  state needs the exe next to the game).
+  1.3 GiB, none of `disc`, `build`, `textures`, `work`, `mc0`, `mc1`, the state file), and **Open the setup** in the game (its enabled
+  state was drawn and checked in item 9; pressing it was not, because it opens a visible window).
 - A CHD or BIN/CUE disc in the window (phase 1 tested them in the CLI), a disc of another region in the window.
 - Windows 10, a PC with no NVIDIA card (simulated only), antivirus or SmartScreen behaviour, OneDrive and network folders in the
   window, screen readers (Tk exposes little to UI Automation: the window is keyboard-reachable but was not tried with a reader),
@@ -127,8 +137,17 @@ author); THIRD-PARTY-NOTICES.md says what was adapted.
   patches itself.
 - **The time claims**: the README says "20 to 25 minutes" for the build on a fast PC (measured: 10.8 min offline from the release,
   21 min with downloads in phase 1's clean clone, both at below-normal priority); the window's own estimate still says 20 to 60.
-- **Zip size**: @@ZIPSIZE@@, far under 2 GiB; nothing needs cutting.
+- **Zip size**: 413.9 MiB, far under 2 GiB; nothing needs cutting.
 
 ## Cleaned up
 
-@@CLEAN@@
+Deleted (all mine, under `Q:\work` or the system temp): the clean clone `rgsw1` (10.1 GB, with its disc, toolchain and build), the
+unpacked release `rgrel2` (8.9 GB), the earlier unpacked release (11.7 GB), the stub program folder, the copy of the memory card and
+scratch settings, the harness outputs and every screenshot (about 31 GB freed in all), the setup's temp logs. No process of mine is
+running (each was started by this session and ended or was stopped by its PID; the owner's game was never touched).
+
+Kept, on purpose: `build\release\` (**the zip, 413.9 MiB**, and the unpacked `RogueGalaxy-Setup\`, 1.3 GiB: delete the folder, the zip
+is the deliverable), `build\release-cache\` (614 MiB of pinned downloads, so the next `make_release.py` run needs no network; safe to
+delete), and `build\game-dev\rg-setupui.exe` (118 MiB, the test build of the page). **Not relinked: `build\game\src\roguegalaxy.exe`**,
+but the objects behind it in `build\game` were rebuilt from the current sources and CMake was re-run there (new `setup_info.cpp`), so
+`cmake --build build\game` now only relinks, as the older notes said.
