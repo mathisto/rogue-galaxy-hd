@@ -291,6 +291,26 @@ class Build(Base):
         compile_events = [e for e in ctx.events() if e['phase'] == 'compile' and e.get('total') == 10]
         self.assertEqual((compile_events[0]['done'], compile_events[0]['unit']), (10, 'files'))
 
+    def test_the_recorded_key_is_the_one_of_the_tree_the_build_leaves(self):
+        # the build applies patches/ to thirdparty/PS2Recomp: a second run on the same folder must not see a new key
+        hostcheck.game_processes = lambda d: []
+        ctx = self.ctx()
+        (ctx.root / 'src').mkdir(exist_ok=True)
+        (ctx.root / 'src' / 'a.cpp').write_text('one')
+        ctx.source_stamp = steps.source_stamp(ctx.layout)
+        before = steps.BuildStep().key(ctx)
+        patched = ctx.root / 'src' / 'a.cpp'
+        step = steps.BuildStep()
+        original = self.proc.run
+
+        def patching_run(command, **kw):
+            patched.write_text('patched by the build')
+            return original(command, **kw)
+        self.proc.run = patching_run
+        step.run(ctx)
+        self.assertNotEqual(ctx.keys['build'], before)
+        self.assertEqual(ctx.keys['build'], step.key(ctx))            # what the next run will compute
+
     def test_a_running_game_stops_the_build_before_anything_is_touched(self):
         hostcheck.game_processes = lambda d: [4242]
         ctx = self.ctx()

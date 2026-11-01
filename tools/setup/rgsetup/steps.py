@@ -502,6 +502,12 @@ class BuildStep(Step):
             rep.progress('build', name, 1, 1, 'steps', force=True)
         if not lay.game_exe.is_file() or not lay.launcher.is_file():
             raise SetupError('err.build_no_exe', exe=str(lay.game_exe))
+        # The build itself changes sources: it applies patches/ to thirdparty/PS2Recomp, and the checks above ran on the
+        # files as they were. The key recorded is the one of the tree as the build left it, or the next run, with
+        # nothing changed, would see a different key and build again (found in the first run from a release, 2026-11-01:
+        # a second run rebuilt 47 files).
+        ctx.source_stamp = source_stamp(lay)
+        ctx.keys['build'] = self.key(ctx)
         return {'exe_size': lay.game_exe.stat().st_size}
 
 
