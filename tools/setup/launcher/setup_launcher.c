@@ -6,8 +6,8 @@
 // launcher (totk-pc-recomp, MIT, same author) is where this comes from.
 //
 // Plain C linked statically so it needs no DLL beside it. tools/make_release.py builds it with the bundled compiler;
-// its icon comes from a .res file (tools/setup/make_resources.py writes it: windres is quarantined by some
-// antivirus programs, see src/launcher/make_resources.py).
+// its icon and manifest come from a .res file that src/launcher/make_resources.py writes (windres is quarantined by
+// some antivirus programs, see there).
 #include <windows.h>
 
 #include <wchar.h>
@@ -39,13 +39,13 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous, LPSTR command_line, i
         fail(L"?");
         return 1;
     }
-    while (n > 0 && folder[n - 1] != L'\')
+    while (n > 0 && folder[n - 1] != L'\\')
     {
         n--;
     }
     folder[n > 0 ? n - 1 : 0] = 0;
-    swprintf(python, PATH_CHARS, L"%ls\toolchain\python\pythonw.exe", folder);
-    swprintf(work, PATH_CHARS, L"%ls\tools\setup", folder);
+    swprintf(python, PATH_CHARS, L"%ls\\toolchain\\python\\pythonw.exe", folder);
+    swprintf(work, PATH_CHARS, L"%ls\\tools\\setup", folder);
     if (GetFileAttributesW(python) == INVALID_FILE_ATTRIBUTES || GetFileAttributesW(work) == INVALID_FILE_ATTRIBUTES)
     {
         fail(folder);
