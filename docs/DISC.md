@@ -18,6 +18,16 @@ Per-file sizes and SHA-256 for all 124 files are in
 `python setup.py verify --iso <image> --full` checks a dump against them and
 against Redump without writing anything.
 
+## Other formats and other releases
+
+The setup ([INSTALLER.md](INSTALLER.md)) takes the dump as an `.iso`, a `.bin`/`.cue` pair (2048-byte
+or raw 2352-byte sectors; converted to an ISO), a `.chd` (converted by chdman, which it downloads, pinned and
+SHA-256 checked, only after a yes) or a folder with the extracted disc (every file is checked against
+`hashes.json`: all 124 present, the sizes right, the hashes of the files up to 32 MiB right, the big ones
+hashed as they are copied). A wrong or partial dump fails with one message that counts what is missing or
+different. The region is read from the boot file in `SYSTEM.CNF` and confirmed by the boot ELF's hash: any
+serial but SCUS-97490 is reported as what it is ("SCES-54567, Europe") and not supported yet.
+
 ## Layers
 
 The image holds two ISO9660 volumes:

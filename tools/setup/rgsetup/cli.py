@@ -255,8 +255,8 @@ def make_plan_event(ctx, steps):
     est = planmod.estimate(ctx.components, extract=bool(runs.get('extract')), build=bool(runs.get('build')),
                            conversion=convert, hd_pending=hd_pending, clean_work=ctx.options.clean_work)
     ctx.estimate = est
-    ctx.temp_need = (ctx.known['iso']['size'] if convert else 0) + planmod.DOWNLOAD_BYTES
     ctx.downloads = pending_downloads(ctx)
+    ctx.temp_need = (ctx.known['iso']['size'] if convert else 0) + (planmod.DOWNLOAD_BYTES if ctx.downloads else 0)
     return {
         'components': list(ctx.components),
         'preset': planmod.preset_of(ctx.components),

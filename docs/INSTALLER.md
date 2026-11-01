@@ -106,7 +106,7 @@ stall watchdog restarts a stuck movie; the setup only calls it and translates wh
 | `--lang`, `--format` | Language of the log and of `--format text` (`text/<lang>.json`, English fills gaps); `json` (default) or `text` on stdout. |
 | `--settings-file FILE` | Where `prompts_font` writes (default: the file the game reads, `RG_SETTINGS_FILE` or `%APPDATA%\RogueGalaxy\Recompiled\settings.ini`). |
 | `--clean-work` | Delete the HD builder's work files when each HD step finishes (the pack stays). |
-| `--gpu N`, `--tools-on-path`, `--redo STEPS`, `--only STEPS`, `--skip STEPS`, `--limit N`, `--limit-movies N` | A specific Vulkan device; developers' toolchain; run again; maintainers and tests (`--only` is what `Build-HD-Pack.bat` uses so it never touches the game build); trial runs of the HD builder. |
+| `--gpu N`, `--tools-on-path`, `--redo STEPS`, `--only STEPS`, `--skip STEPS`, `--limit N`, `--limit-movies N` | A specific Vulkan device; developers' toolchain; run again; maintainers and tests (`--only` is what `Build-HD-Pack.bat` uses, for just the disc and the HD step of its mode, so it never touches the game build; trial flags such as `--limit` are per run and change the HD steps' keys, so a trial is never taken for the real thing); trial runs of the HD builder. |
 
 Exit codes: **0** done, **1** failed (an `error` event says why), **2** bad command line (an `err.usage` event), **3**
 cancelled. Cancel by sending Ctrl+Break to the setup's process group (what the window will do), or Ctrl+C or SIGTERM:
@@ -146,7 +146,7 @@ Example (trimmed):
 ## The state file
 
 `rg-install.json` in the install folder: `format`, `release`, `region`, `components` (everything installed so far),
-`inputs.disc` (kind, file name, size, serial, `validated`; never a path to the image or a byte of it), and `steps`
+`inputs.disc` (kind, file name, size, serial, `validated`, `digest` = a hash of what a valid disc is, and with `--verify` the image's CRC-32 and SHA-1, which are Redump's public values; never a path to the image or a byte of it), and `steps`
 (`key`, `release`, `finished`, `seconds`, the step's own fields, `adopted` when taken over). It is replaced atomically
 after each step. A newer `format` than the setup knows is `err.state_newer`; an unreadable one `err.state_unreadable`
 (move it away to start over; nothing else is deleted).

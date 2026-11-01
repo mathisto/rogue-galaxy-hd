@@ -150,6 +150,7 @@ if ($mode -eq 0 -and -not $isEstimate) {
 }
 if ($mode -eq 0) { $mode = 3 }
 $components = @{ 1 = "textures"; 2 = "movies"; 3 = "textures,movies" }[$mode]
+$hdSteps = @{ 1 = "hd_textures"; 2 = "hd_movies"; 3 = "hd_textures,hd_movies" }[$mode]
 
 # The disc: Install.bat extracts it into disc\. Without it, ask for the image.
 $discOk = (Test-Path -LiteralPath (Join-Path $Root "disc\manifest.json")) -and (Test-Path -LiteralPath (Join-Path $Root "disc\SCUS_974.90"))
@@ -170,8 +171,8 @@ if (-not $discOk -and -not $iso -and -not $isEstimate) {
     if (-not $iso) { Stop-Build "No disc image chosen. Run Install.bat, or run this again with the image." }
 }
 
-# Only the disc and the HD steps: the game itself (Install.bat) is not touched, so a game that is running stays.
-$arguments = @("-X", "utf8", "-m", "rgsetup", "--dest", $Root, "--components", $components, "--only", "check,source,extract,hd_textures,hd_movies,finish", "--format", "text") + $passthrough
+# Only the disc and the HD steps of the chosen mode: the game itself (Install.bat) is not touched, so a game that is running stays.
+$arguments = @("-X", "utf8", "-m", "rgsetup", "--dest", $Root, "--components", $components, "--only", "check,source,extract,$hdSteps,finish", "--format", "text") + $passthrough
 if ($iso -and -not $discOk) { $arguments += @("--source", $iso) }
 Write-Host ""
 Write-Host "Running: python -m rgsetup $($arguments[4..($arguments.Count - 1)] -join ' ')" -ForegroundColor Cyan
