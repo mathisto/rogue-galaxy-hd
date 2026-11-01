@@ -44,8 +44,9 @@ from rgsetup import download  # noqa: E402
 
 FOLDER = 'RogueGalaxy-Setup'
 GITHUB_LIMIT = 2 * 1024 ** 3
-# Left out of the release: tests, the batch installers (the window does their work), and files of the repository itself.
-SKIP_PREFIXES = ('tests/', 'tools/install/', '.github/', 'tools/hd/build-hd-pack.ps1')
+# Left out of the release: tests, the batch installers (the window does their work), the developer's session notes, and
+# files of the repository itself.
+SKIP_PREFIXES = ('tests/', 'tools/install/', '.github/', 'tools/hd/build-hd-pack.ps1', 'docs/SESSION-NOTES')
 SKIP_NAMES = {'Install.bat', 'Build-HD-Pack.bat', '.gitignore', '.gitattributes', '.gitmodules'}
 
 CONSOLE_CMD = r"""@echo off
