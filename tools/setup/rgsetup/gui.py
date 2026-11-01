@@ -16,6 +16,7 @@ import queue
 import shutil
 import subprocess
 import sys
+import time
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, font as tkfont, messagebox, ttk
@@ -110,6 +111,8 @@ class App:
                       'finish': self.build_finish()}
         self.refresh_form()
         self.show('form')
+        root.bind('<Return>', self.on_return)
+        self.source_entry.focus_set()
         if start_probe:
             self.start_probe()
             root.after(300, self.enable_drop)
@@ -271,6 +274,13 @@ class App:
         self.note = self.label(f, '', fg=WARN_FG, bg=WARN_BG, padx=self.s(10), pady=self.s(7))
         self.error_label = self.label(f, '', fg=BAD, font=self.f_bold)
         return outer
+
+    def on_return(self, _event=None):
+        """Enter does the screen's main thing, as the highlighted button says."""
+        if self.screen == 'form' and self.review_job is None:
+            self.do_review()
+        elif self.screen == 'consent' and 'disabled' not in self.start_button.state():
+            self.start()
 
     def on_form_edit(self):
         self.form.source = self.var_source.get()
@@ -1126,17 +1136,109 @@ def test_drop(app, check):
     check('drop reaches the field', app.var_source.get() == os.path.normpath(path))
 
 
+
+def live(layout, scenario, source=None, shots=None, preset='faithful', gentle=True, wait=5400):
+    """Drive the real window against the real CLI, for the developer (no clicking needed, never takes the focus):
+
+        review    fill the form, press Review, wait for the consent page (or the error), print what it shows
+        run       review, then Start, wait for the finish page
+        cancel    review, Start, press Cancel five seconds into the extraction, wait for the finish page
+
+    Prints one JSON line with what the screens said. Exit 0 when the scenario ended as it should."""
+    dpi_aware()
+    root = tk.Tk()
+    root.geometry('+40+40')
+    if shots and os.name == 'nt':
+        quiet_window(root)
+    app = App(root, layout)
+    out = {'scenario': scenario, 'steps': []}
+    shots_dir = Path(shots) if shots else None
+    if shots_dir:
+        shots_dir.mkdir(parents=True, exist_ok=True)
+
+    def shot(name):
+        root.update()
+        if shots_dir:
+            grab(root, shots_dir / f'{scenario}-{name}.png')
+
+    state = {'phase': 'probe', 't0': time.monotonic(), 'cancel_at': None}
+
+    def tick():
+        now = time.monotonic() - state['t0']
+        ph = state['phase']
+        if ph == 'probe':
+            if app.probe_job is None:
+                out['probe'] = {'installed': app.is_installed, 'unavailable': sorted(app.probe.unavailable()),
+                                'per_component': sorted(app.probe.per_component()), 'free_gb': gb(app.probe.space['free']) if app.probe.space else None}
+                shot('1-form')
+                if source:
+                    app.set_source(source)
+                app.form.set_preset(preset)
+                app.form.gentle = gentle
+                app.refresh_form()
+                app.do_review()
+                state['phase'] = 'review'
+        elif ph == 'review':
+            if app.review_job is None:
+                if app.screen == 'consent':
+                    plan = app.review.plan
+                    out['consent'] = {'components': plan['components'], 'run': plan['run'], 'downloads': [d['id'] for d in plan['downloads']],
+                                      'need_gb': gb(plan['disk']['need']), 'text': app.consent_disk.cget('text'), 'time': app.consent_time.cget('text')}
+                    shot('2-consent')
+                    if scenario == 'review':
+                        return finish(0)
+                    app.start()
+                    state['phase'] = 'run'
+                else:
+                    out['form_error'] = app.error_label.cget('text')
+                    shot('2-form-error')
+                    return finish(0 if scenario == 'review' else 1)
+        elif ph == 'run':
+            m = app.model
+            if scenario == 'cancel' and state['cancel_at'] is None and m.states.get('extract') == RUNNING:
+                state['cancel_at'] = now + 5
+            if state['cancel_at'] and now >= state['cancel_at'] and app.job and app.job.cancelled_at is None:
+                shot('3-running')
+                app.cancel()
+            if app.screen == 'finish':
+                out['result'] = m.result
+                out['exit'] = m.exit_code
+                out['finish'] = app.finish_head.cget('text')
+                out['steps'] = {s: m.states.get(s) for s in m.steps}
+                shot('4-finish')
+                want = 'cancelled' if scenario == 'cancel' else 'ok'
+                return finish(0 if m.result == want else 1)
+        if now > wait:
+            out['timeout'] = True
+            return finish(1)
+        root.after(300, tick)
+
+    def finish(code):
+        out['code'] = code
+        print(json.dumps(out), flush=True)
+        root.destroy()
+        sys.exit(code)
+
+    root.after(300, tick)
+    root.mainloop()
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument('--selftest', action='store_true')
     ap.add_argument('--shots', type=Path)
     ap.add_argument('--scale', type=float, help='pretend the display is at this scale (1.5 = 150%%)')
     ap.add_argument('--dest', type=Path)
+    ap.add_argument('--live', choices=('review', 'run', 'cancel'), help='developer: drive the real window against the real CLI')
+    ap.add_argument('--source', help='with --live: the disc to choose')
+    ap.add_argument('--preset', default='faithful', choices=('faithful', 'recommended', 'everything'), help='with --live')
     args = ap.parse_args(argv)
     dpi_aware()
     layout = layouts.Layout(args.dest or layouts.ROOT)
     if args.selftest:
         return selftest(layout, args.shots, args.scale)
+    if args.live:
+        return live(layout, args.live, args.source, args.shots, args.preset)
     root = tk.Tk()
     App(root, layout, scale=args.scale, dest=args.dest)
     root.mainloop()

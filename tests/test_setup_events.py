@@ -75,7 +75,7 @@ class EventModel(unittest.TestCase):
             rep.close()
             text = log.read_text(encoding='utf-8')
         self.assertIn('Unpacking the disc', text)
-        self.assertIn('not enough free space on D:', text)
+        self.assertIn('drive D: has 1 GB free', text)
         self.assertIn('[err.space]', text)
         self.assertNotIn('{"type"', text)
 
