@@ -186,7 +186,7 @@ Details worth knowing:
   the CLI kills what it started and prints `end` with `cancelled`. Closing the window while it runs asks first, then does the same.
 - **The install folder.** The game is built where the program is (the release's own folder), so the folder field shows
   that. **Change...** asks for an empty folder (a short path without spaces, not OneDrive, not a network drive: the same
-  rule as `err.path_*`), then copies the program there (about 2 GB: the toolchain, deps and sources, never `disc/`, `build/`,
+  rule as `err.path_*`), then copies the program there (about 1.4 GB: the toolchain, deps and sources, never `disc/`, `build/`,
   `textures/`, `work/`, `mc0/`, `mc1/` or the state file) and opens the setup from the copy.
 - **Drag and drop** is `WM_DROPFILES` on the window (Tk has none): drop an image or a folder and it lands in the disc field.
 - **Looking at it.** `python -m rgsetup.gui --selftest [--shots DIR] [--scale 1.5]` builds every screen with sample
@@ -226,9 +226,10 @@ SHA-256 are one of the disc's 124 files, with `--disc` any file holding a 32-byt
 files, and any file holding the builder's user name, home or checkout path or e-mail (ASCII or UTF-16). The bundled tools
 are checked too (their names may end in `.dat`; their bytes and paths may not match). A hit fails the build.
 
-**Size.** GitHub allows 2 GiB for a release file. See [SESSION-NOTES-setup-window.md](SESSION-NOTES-setup-window.md) for the
-measured size; the largest part is llvm-mingw (about 700 MB unpacked, 180 MB zipped), then cmake and git; if it ever goes over,
-cut `toolchain/llvm-mingw` to the x86_64 target (drop `i686-w64-mingw32`, `aarch64-w64-mingw32`, `armv7-w64-mingw32`, about 40 %).
+**Size.** GitHub allows 2 GiB for a release file. The first real build (commit 9f6ceae) is **413.9 MiB zipped, 1347 MiB
+unpacked**: `toolchain/` 1102 MiB (llvm-mingw is most of it, then cmake, git, python), `deps/` 212 MiB, `thirdparty/` 29 MiB,
+everything else under 3 MiB. It is a quarter of the limit. If it ever goes over, the first cut is `toolchain/llvm-mingw` to the
+x86_64 target (drop `i686-w64-mingw32`, `aarch64-w64-mingw32`, `armv7-w64-mingw32`), then cmake's `doc/` and `share/`.
 
 **Updating** is the same rule as resuming: unpack the newer release over the folder (the zip holds none of `disc/`, `build/`,
 `textures/`, `mc0/`, `mc1/`, `work/` or `rg-install.json`, so they are kept), run `RogueGalaxy-Setup.exe`, and the plan says

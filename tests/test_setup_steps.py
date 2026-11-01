@@ -361,6 +361,24 @@ class GameCheck(Base):
                 p.kill()
                 p.wait()
 
+    def test_a_game_of_that_name_running_from_another_folder_is_not_in_the_way(self):
+        # the owner plays one copy while another is set up: only the one under the install folder blocks a relink
+        other = self.t / 'player' / 'build' / 'game' / 'src'
+        other.mkdir(parents=True)
+        exe = other / 'roguegalaxy.exe'
+        shutil.copy(Path(os.environ['SystemRoot']) / 'System32' / 'PING.EXE', exe)
+        mine = self.t / 'install'
+        mine.mkdir()
+        p = subprocess.Popen([str(exe), '-n', '40', '127.0.0.1'], stdout=subprocess.DEVNULL,
+                             creationflags=subprocess.CREATE_NO_WINDOW)
+        try:
+            time.sleep(1.5)
+            self.assertIn(p.pid, hostcheck.game_processes(self.t / 'player'))
+            self.assertNotIn(p.pid, hostcheck.game_processes(mine))
+        finally:
+            p.kill()
+            p.wait()
+
 
 class Space(Base):
     def test_not_enough_space_is_an_error_naming_the_numbers(self):

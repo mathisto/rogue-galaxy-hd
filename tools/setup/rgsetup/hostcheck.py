@@ -112,29 +112,29 @@ def is_64bit_windows():
 
 
 def game_processes(install_dir):
-    """PIDs of Rogue Galaxy processes: by image name (tasklist) and by path under the install folder (Get-Process).
-    Used before the game's executable is relinked, which Windows refuses while it runs."""
+    """PIDs of Rogue Galaxy processes that hold this install's files: the game or its launcher under the install folder
+    (build\\game, build\\game-dev ..., "Rogue Galaxy.exe"). Used before the game's executable is relinked, which Windows
+    refuses while it runs. A game running from another folder is not in the way and is not counted (a player may have
+    two installs, or play one while the other updates), but a process of the game's name whose path cannot be read is
+    counted, to be safe. Found by path under the install folder (Get-Process) and by image name."""
     if os.name != 'nt':
         return []
     pids = set()
     base = str(Path(install_dir).resolve()).rstrip('\\') + '\\'
     try:
-        out = subprocess.run(['tasklist', '/FO', 'CSV', '/NH'], capture_output=True, text=True, timeout=60,
-                             creationflags=NO_WINDOW).stdout
-        for line in out.splitlines():
-            parts = [x.strip('"') for x in line.split('","')]
-            if len(parts) > 1 and parts[0].lower() in ('roguegalaxy.exe', 'rogue galaxy.exe'):
-                pids.add(int(parts[1]))
-    except (OSError, ValueError, subprocess.SubprocessError):
-        pass
-    try:
-        script = ("Get-Process | Where-Object { $_.Path -and $_.Path.StartsWith('%s', "
-                  "[StringComparison]::OrdinalIgnoreCase) } | ForEach-Object { '' + $_.Id + '|' + $_.Path }"
+        script = ("Get-Process | Where-Object { ($_.Path -and $_.Path.StartsWith('%s', "
+                  "[StringComparison]::OrdinalIgnoreCase)) -or (@('roguegalaxy', 'rogue galaxy') -contains "
+                  "$_.ProcessName.ToLower()) } | ForEach-Object { '' + $_.Id + '|' + $_.Path }"
                   % base.replace("'", "''"))
         out = subprocess.run(['powershell.exe', '-NoProfile', '-Command', script], capture_output=True, text=True,
                              timeout=60, creationflags=NO_WINDOW).stdout
         for line in out.splitlines():
             pid, _, path = line.partition('|')
+            if pid.isdigit() and not path.strip() and int(pid) != os.getpid():
+                pids.add(int(pid))               # named like the game, path hidden from us: assume it is in the way
+                continue
+            if not path.lower().startswith(base.lower()):
+                continue                         # the game, but running from another folder
             rel = path[len(base):].lower().replace('/', '\\')
             # a game build or test executable (build\game, build\game-dev ...) or the launcher; not the toolchain, the
             # build tools under build\tools, or this installer's own Python
