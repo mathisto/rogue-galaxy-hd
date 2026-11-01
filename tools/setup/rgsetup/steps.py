@@ -219,14 +219,16 @@ class SourceStep(Step):
                 info = discmod.identify_iso(ctx.shared['iso'], known)
                 ctx.shared['disc'] = {'kind': kind, **info}
                 if ctx.options.verify:
-                    discmod.verify_image_hash(ctx.shared['iso'], known, progress_writer(rep, 'source', 'image_hash'))
+                    got = discmod.verify_image_hash(ctx.shared['iso'], known, progress_writer(rep, 'source', 'image_hash'))
+                    ctx.shared['image_hashes'] = {k: got[k] for k in ('crc32', 'sha1')}
                 rep.progress('source', 'validate', 1, 1, 'files', force=True)
         except discmod.DiscProblem as e:
             raise SetupError(e.id, **e.params) from None
         d = ctx.shared['disc']
         ctx.state['region'] = known['serial']
         ctx.state['inputs']['disc'] = {'kind': kind, 'name': src.name, 'size': src.stat().st_size if src.is_file() else None,
-                                       'serial': d['serial'], 'validated': True}
+                                       'serial': d['serial'], 'validated': True, 'digest': ctx.known_digest,
+                                       **ctx.shared.get('image_hashes', {})}
         return {'kind': kind}
 
     def from_chd(self, ctx, src):
@@ -742,7 +744,7 @@ class FinishStep(Step):
             present['textures'] = True
         if lay.movies.is_dir() and any(lay.movies.rglob('*.mkv')):
             present['movies'] = True
-        ctx.state['components'] = sorted(set(ctx.state.get('components', [])) | set(ctx.components))
+        ctx.state['components'] = [c for c in planmod.COMPONENT_ORDER if c in set(ctx.state.get('components', [])) | set(ctx.components)]
         # Whatever the temp folder holds besides the logs is scratch.
         if ctx.temp.is_dir():
             for child in ctx.temp.iterdir():

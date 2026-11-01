@@ -42,8 +42,9 @@ BUILD_BYTES = 9 * GiB         # build/ (about 4 GB of generated C and objects) a
 MARGIN_BYTES = 3 * GiB        # the HD builder's own margin (build_hd_pack.preflight)
 DOWNLOAD_BYTES = 1 * GiB      # downloads in flight and unpacking beside them (temp folder)
 # Minutes on the author's PC. The build is README's "about 20 minutes on a fast PC, up to an hour on a slower one".
-# The extraction was measured at about 2 minutes when this was written (docs/SESSION-NOTES-setup.md).
-EXTRACT_MINUTES = (2, 6)
+# The extraction was measured at 17 seconds on the author's NVMe disk (docs/SESSION-NOTES-setup.md); a hard disk or
+# a slow USB drive takes minutes.
+EXTRACT_MINUTES = (1, 6)
 BUILD_MINUTES = (20, 60)
 CONVERT_MINUTES = (3, 10)     # CHD or BIN/CUE to ISO: not measured (no CHD of the game was available)
 

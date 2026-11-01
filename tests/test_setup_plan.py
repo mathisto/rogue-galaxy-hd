@@ -59,8 +59,8 @@ class Numbers(unittest.TestCase):
         e = plan.estimate(('textures', 'movies', 'prompts_font'))
         self.assertEqual(e['need'], (7 + 9 + 22 + 3) * GiB)
         self.assertEqual(e['final'], (7 + 9 + 22) * GiB)
-        self.assertEqual(e['minutes_min'], 2 + 20 + 20 + 90)
-        self.assertEqual(e['minutes_max'], 6 + 60 + 30 + 90)
+        self.assertEqual(e["minutes_min"], 1 + 20 + 20 + 90)
+        self.assertEqual(e["minutes_max"], 6 + 60 + 30 + 90)
 
     def test_estimate_counts_only_what_is_left(self):
         e = plan.estimate(('textures', 'movies', 'prompts_font'), extract=False, build=False, hd_pending=['movies'])

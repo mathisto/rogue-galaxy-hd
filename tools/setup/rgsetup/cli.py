@@ -369,7 +369,8 @@ def run(args, layout, dest, temp, log, rep):
                 else:
                     raise SetupError('err.consent_needed', names=', '.join(d['name'] for d in ctx.downloads))
         ctx.announce = announce
-        ctx.state['components'] = sorted(set(ctx.state.get('components') or []) | set(ctx.components)) if not args.estimate else ctx.state.get('components', [])
+        ctx.state['components'] = ([c for c in planmod.COMPONENT_ORDER if c in set(ctx.state.get('components') or []) | set(ctx.components)]
+                                   if not args.estimate else ctx.state.get('components', []))
         result = run_steps(steps, ctx, only=set((args.only or '').split(',')) - {''} or None,
                            skip=set((args.skip or '').split(',')) - {''} or None, report_only=args.estimate)
         return result

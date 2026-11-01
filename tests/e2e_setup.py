@@ -75,7 +75,7 @@ def main():
     scratch.mkdir(parents=True, exist_ok=True)
     clone = scratch / 'clone'
     settings = scratch / 'settings.ini'
-    source = a.chd or a.iso
+    source = a.iso
     iso_before = (a.iso.stat().st_size, a.iso.stat().st_mtime_ns)
     env = dict(os.environ, RG_SETTINGS_FILE=str(settings), PYTHONUTF8='1')
     env.pop('RG_SETUP_FAKE_VULKAN', None)
@@ -125,11 +125,12 @@ def main():
     print(f'    run took {secs / 60:.1f} min', flush=True)
 
     # 3. verify read only
-    rc, ev = run_setup(clone, ['--estimate', '--verify'], env)
+    rc, ev = run_setup(clone, ['--estimate', '--verify', '--skip', 'toolchain,build'], env)
     check('verify of the unpacked disc passes (no warn.output_changed)', rc == 0 and not [e for e in ev if e['type'] == 'warning' and e['id'] == 'warn.output_changed'])
 
     # 4. second run
-    rc, ev = run_setup(clone, ['--skip', 'toolchain,build', '--settings-file', settings, '--yes', '--gentle'], env)
+    rc, ev = run_setup(clone, ['--skip', 'toolchain,build', '--settings-file', settings, '--yes', '--gentle',
+                               '--limit', '6', '--limit-movies', '1'], env)       # trial flags are per run: same ones again
     skipped = {e['step']: e.get('reason') for e in ev if e['type'] == 'step' and e['state'] == 'skipped'}
     started = [e['step'] for e in ev if e['type'] == 'step' and e['state'] == 'started']
     check('the second run needs only --dest and does no work', rc == 0 and started == ['check', 'finish'] and skipped.get('extract') == 'current', (rc, started, skipped))
@@ -145,8 +146,21 @@ def main():
         rc, ev = run_setup(clone, ['--source', source, '--skip', 'toolchain,build', '--settings-file', settings, '--yes', '--gentle', '--components', components,
                                    '--limit', '6', '--limit-movies', '1'], env)
         check('the next run finishes the job', rc == 0, rc)
-        rc, ev = run_setup(clone, ['--estimate', '--verify'], env)
+        rc, ev = run_setup(clone, ['--estimate', '--verify', '--skip', 'toolchain,build'], env)
         check('the disc is whole after the cancel and the rerun', rc == 0 and not [e for e in ev if e['type'] == 'warning'])
+
+    # 6. a CHD of the same disc: chdman is downloaded (pinned, SHA-256 checked), the CHD becomes an ISO, the extraction is the same
+    if a.chd:
+        shutil.rmtree(clone / 'toolchain' / 'chdman', ignore_errors=True)
+        rc, ev = run_setup(clone, ['--source', a.chd, '--redo', 'source,extract', '--skip', 'toolchain,build,hd_textures,hd_movies',
+                                   '--settings-file', settings, '--yes', '--gentle'], env)
+        check('a CHD source: exit 0', rc == 0, rc)
+        phases = {e['phase'] for e in ev if e['type'] == 'progress'}
+        check('a CHD source: chdman downloaded, unpacked, and the CHD read', {'download_chdman', 'unpack_chdman', 'chd'} <= phases, phases)
+        check('a CHD source: chdman.exe is in toolchain/chdman', (clone / 'toolchain' / 'chdman' / 'chdman.exe').is_file())
+        check('a CHD source: the converted ISO is gone afterwards', not (clone / 'work' / 'setup' / 'disc.iso').exists())
+        rc, ev = run_setup(clone, ['--estimate', '--verify', '--skip', 'toolchain,build'], env)
+        check('a CHD source: the unpacked disc is identical (hash check)', rc == 0 and not [e for e in ev if e['type'] == 'warning'])
 
     check('the source image was not touched', iso_before == (a.iso.stat().st_size, a.iso.stat().st_mtime_ns))
     freed = 0
