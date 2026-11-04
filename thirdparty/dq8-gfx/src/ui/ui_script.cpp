@@ -153,6 +153,12 @@ void Overlay::runStep(const ScriptStep &step, uint64_t frame) {
                 g_navRelease = kKeys[index];
                 g_navFrames = 4;
             }
+    } else if (command == "mousepos") {
+        // "mousepos X Y": the pointer there, in the window's points (Rogue
+        // Galaxy: added), to hover a row without a mouse.
+        if (step.arguments.size() >= 2)
+            ImGui::GetIO().AddMousePosEvent(static_cast<float>(std::atof(step.arguments[0].c_str())),
+                                            static_cast<float>(std::atof(step.arguments[1].c_str())));
     } else if (command == "pageinfo") {
         std::fprintf(stderr, "[ui] page %d: scroll range %.0f px, visible %.0f px, window %.0fx%.0f\n",
                      static_cast<int>(m_page), g_scrollPageInfo[0], g_scrollPageInfo[1],

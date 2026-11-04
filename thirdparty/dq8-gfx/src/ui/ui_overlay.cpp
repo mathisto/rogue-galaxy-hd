@@ -812,12 +812,15 @@ void Overlay::drawCapturePrompt() {
             const float glyph = em(2.4f);
             const ImVec2 at = ImGui::GetCursorScreenPos();
             ImGui::Dummy(ImVec2(glyph, glyph));
-            drawPadGlyph(list, m_capture.input, ImVec2(at.x + glyph * 0.5f, at.y + glyph * 0.5f), glyph);
+            const ShownPad shown = shownPad();
+            drawPadGlyph(list, m_capture.input, ImVec2(at.x + glyph * 0.5f, at.y + glyph * 0.5f), glyph, shown.body);
             ImGui::SameLine(0.0f, em(1.0f));
             ImGui::BeginGroup();
             ImGui::PushFont(nullptr, ImGui::GetStyle().FontSizeBase * 1.2f);
-            ImGui::Text("Press %s for %s", m_capture.keyboard ? "a key" : "a button",
-                        gfx::padInputName(m_capture.input));
+            const char *original = gameInputOriginal(m_capture.input, shown.body);
+            ImGui::Text("Press %s for %s%s%s%s", m_capture.keyboard ? "a key" : "a button",
+                        gameInputName(m_capture.input, shown.body), original ? " (" : "", original ? original : "",
+                        original ? ")" : "");
             ImGui::PopFont();
             mutedText("%s", m_capture.keyboard ? "Any key works, even Esc." : "On the controller; Esc cancels.");
             ImGui::EndGroup();
@@ -1225,12 +1228,116 @@ void Overlay::updateAutoScale() {
     notify(text, Icon::Info);
 }
 
-SDL_GamepadType Overlay::displayedControllerType() const {
+gfx::PadSnapshot Overlay::padPreview() const {
+    gfx::PadSnapshot snapshot = m_backend.padInput().preview();
+    // RG_FAKE_PAD_HELD="cross,l1,lstick_right": a hidden run has no keys or
+    // buttons to press, so the lit pad of the Controls page is tested by name.
+    static const std::string fake = [] {
+        const char *value = std::getenv("RG_FAKE_PAD_HELD");
+        return std::string(value ? value : "");
+    }();
+    if (fake.empty())
+        return snapshot;
+    for (size_t input = 0; input < gfx::kPadInputCount; ++input) {
+        const auto pad = static_cast<gfx::PadInput>(input);
+        const std::string key = gfx::padInputKey(pad);
+        if (("," + fake + ",").find("," + key + ",") == std::string::npos)
+            continue;
+        snapshot.held |= gfx::padButtonMask(pad);
+        const auto set = [&](int shift, uint32_t value) {
+            snapshot.sticks = (snapshot.sticks & ~(0xFFu << shift)) | (value << shift);
+        };
+        switch (pad) {
+        case gfx::PadInput::LeftStickUp: set(0, 0u); break;
+        case gfx::PadInput::LeftStickDown: set(0, 255u); break;
+        case gfx::PadInput::LeftStickLeft: set(8, 0u); break;
+        case gfx::PadInput::LeftStickRight: set(8, 255u); break;
+        case gfx::PadInput::RightStickUp: set(16, 0u); break;
+        case gfx::PadInput::RightStickDown: set(16, 255u); break;
+        case gfx::PadInput::RightStickLeft: set(24, 0u); break;
+        case gfx::PadInput::RightStickRight: set(24, 255u); break;
+        default: break;
+        }
+    }
+    return snapshot;
+}
+
+Overlay::ShownPad Overlay::shownPad() const {
+    // The controller in use, or the first one connected; RG_FAKE_PAD_TYPE
+    // (ps3, ps4, ps5, xbox360, xbox, switch, generic, none) stands in for it in
+    // tests, since a hidden run has no pad.
+    bool connected = false;
+    SDL_GamepadType real = SDL_GAMEPAD_TYPE_STANDARD;
     const auto controllers = m_backend.padInput().controllers();
     for (const auto &controller : controllers)
-        if (controller.active)
-            return controller.type;
-    return controllers.empty() ? SDL_GAMEPAD_TYPE_STANDARD : controllers.front().type;
+        if (controller.active) {
+            connected = true;
+            real = controller.type;
+            break;
+        }
+    if (!connected && !controllers.empty()) {
+        connected = true;
+        real = controllers.front().type;
+    }
+    static const std::string fake = [] {
+        const char *value = std::getenv("RG_FAKE_PAD_TYPE");
+        return std::string(value ? value : "");
+    }();
+    if (!fake.empty()) {
+        struct Fake { const char *name; bool connected; SDL_GamepadType type; };
+        static constexpr Fake kFakes[] = {
+            {"none", false, SDL_GAMEPAD_TYPE_STANDARD}, {"ps3", true, SDL_GAMEPAD_TYPE_PS3},
+            {"ps4", true, SDL_GAMEPAD_TYPE_PS4}, {"ps5", true, SDL_GAMEPAD_TYPE_PS5},
+            {"xbox360", true, SDL_GAMEPAD_TYPE_XBOX360}, {"xbox", true, SDL_GAMEPAD_TYPE_XBOXONE},
+            {"switch", true, SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_PRO}, {"generic", true, SDL_GAMEPAD_TYPE_STANDARD}};
+        for (const Fake &entry : kFakes)
+            if (fake == entry.name) {
+                connected = entry.connected;
+                real = entry.type;
+            }
+    }
+
+    const bool realPlayStation = real == SDL_GAMEPAD_TYPE_PS3 || real == SDL_GAMEPAD_TYPE_PS4 ||
+                                 real == SDL_GAMEPAD_TYPE_PS5;
+    const bool realXbox = real == SDL_GAMEPAD_TYPE_XBOX360 || real == SDL_GAMEPAD_TYPE_XBOXONE;
+    ShownPad shown;
+    // What the connected pad is called, for the caption.
+    std::string name = "Controller";
+    switch (real) {
+    case SDL_GAMEPAD_TYPE_PS3: name = "DualShock 3"; break;
+    case SDL_GAMEPAD_TYPE_PS4: name = "DualShock 4"; break;
+    case SDL_GAMEPAD_TYPE_PS5: name = "DualSense"; break;
+    case SDL_GAMEPAD_TYPE_XBOX360: name = "Xbox 360 controller"; break;
+    case SDL_GAMEPAD_TYPE_XBOXONE: name = "Xbox controller"; break;
+    case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_PRO: name = "Switch Pro controller"; break;
+    default: break;
+    }
+    const PadLayout layout = m_settings.padLayout;
+    if (layout == PadLayout::Xbox) {
+        shown.body = PadBody::Xbox;
+        shown.labels = realXbox ? real : SDL_GAMEPAD_TYPE_XBOXONE;
+        shown.caption = "Showing the Xbox layout";
+    } else if (layout == PadLayout::PlayStation) {
+        shown.body = PadBody::PlayStation;
+        shown.labels = realPlayStation ? real : SDL_GAMEPAD_TYPE_PS4;
+        shown.caption = "Showing the PlayStation layout";
+    } else if (!connected) {
+        shown.caption = "No controller connected: showing PlayStation";
+    } else if (realXbox) {
+        shown.body = PadBody::Xbox;
+        shown.labels = real;
+        shown.caption = name + " connected";
+    } else if (realPlayStation) {
+        shown.labels = real;
+        shown.caption = name + " connected";
+    } else {
+        // A Switch or unknown pad has no body of its own here; PlayStation
+        // is the default, and its buttons are named by position.
+        shown.caption = name + " connected: showing PlayStation";
+    }
+    if (layout != PadLayout::Auto && connected)
+        shown.caption += " (" + name + " connected)";
+    return shown;
 }
 
 } // namespace dq8::ui

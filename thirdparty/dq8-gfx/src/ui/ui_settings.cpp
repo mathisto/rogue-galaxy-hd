@@ -35,6 +35,8 @@ constexpr Named<SDL_GPUPresentMode> kPresentModes[] = {
     {SDL_GPU_PRESENTMODE_IMMEDIATE, "immediate"}};
 constexpr Named<ControllerSelection> kSelections[] = {
     {ControllerSelection::Any, "any"}, {ControllerSelection::One, "one"}, {ControllerSelection::None, "none"}};
+constexpr Named<PadLayout> kLayouts[] = {
+    {PadLayout::Auto, "auto"}, {PadLayout::PlayStation, "playstation"}, {PadLayout::Xbox, "xbox"}};
 constexpr Named<Corner> kCorners[] = {
     {Corner::TopLeft, "top-left"}, {Corner::TopRight, "top-right"},
     {Corner::BottomLeft, "bottom-left"}, {Corner::BottomRight, "bottom-right"}};
@@ -144,6 +146,7 @@ void apply(Settings &s, const std::string &section, const std::string &key, cons
         else if (key == "invert_camera_x") parseBool(value, s.pad.invertCameraX);
         else if (key == "invert_camera_y") parseBool(value, s.pad.invertCameraY);
         else if (key == "back_start_menu") parseBool(value, s.backStartOpensMenu);
+        else if (key == "layout") parseNamed(kLayouts, value, s.padLayout);
     } else if (section == "controller" || section == "keyboard") {
         parseBinding(s.pad, section == "keyboard", key, value);
     } else if (section == "interface") {
@@ -202,7 +205,8 @@ std::string serializeSettings(const Settings &s) {
         << "\ntrigger_threshold = " << s.pad.triggerThreshold * 100.0f
         << "\ninvert_camera_x = " << flag(s.pad.invertCameraX)
         << "\ninvert_camera_y = " << flag(s.pad.invertCameraY)
-        << "\nback_start_menu = " << flag(s.backStartOpensMenu) << "\n";
+        << "\nback_start_menu = " << flag(s.backStartOpensMenu)
+        << "\nlayout = " << nameOf(kLayouts, s.padLayout) << "\n";
     for (const bool keyboard : {false, true}) {
         out << "\n[" << (keyboard ? "keyboard" : "controller") << "]\n";
         for (size_t input = 0; input < gfx::kPadInputCount; ++input) {

@@ -12,6 +12,10 @@ namespace dq8::ui {
 
 enum class Corner : uint8_t { TopLeft, TopRight, BottomLeft, BottomRight };
 
+// Whose controller the Controls page draws and names the buttons of (Rogue
+// Galaxy: added): Auto follows the connected one, PlayStation when none is.
+enum class PadLayout : uint8_t { Auto, PlayStation, Xbox };
+
 struct Settings {
     // Window
     bool fullscreen = false;
@@ -45,6 +49,7 @@ struct Settings {
     // Controls
     gfx::PadConfig pad = gfx::PadConfig::defaults();
     bool backStartOpensMenu = true;
+    PadLayout padLayout = PadLayout::Auto; // [controls] layout; display only
 
     // Interface
     int uiScale = 100; // percent, on top of the display's own scale

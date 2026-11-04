@@ -288,7 +288,16 @@ private:
     // Hands the host the speed the two make.
     void applySpeed();
     void setFastForwardSpeed(float speed);
-    SDL_GamepadType displayedControllerType() const;
+    // Which controller the Controls page draws, what its buttons are called
+    // and the line that says why (Rogue Galaxy: added).
+    struct ShownPad {
+        PadBody body = PadBody::PlayStation;
+        SDL_GamepadType labels = SDL_GAMEPAD_TYPE_PS4;
+        std::string caption;
+    };
+    ShownPad shownPad() const;
+    // The pad as the Controls page lights it; RG_FAKE_PAD_HELD adds inputs in tests.
+    gfx::PadSnapshot padPreview() const;
     double now() const;
 
     gfx::SdlGpuBackend &m_backend;

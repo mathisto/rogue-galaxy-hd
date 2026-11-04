@@ -955,22 +955,37 @@ void Overlay::drawControlsPage() {
     }
 
     sectionHeader("Button bindings");
+    const Overlay::ShownPad shown = shownPad();
     {
         const float width = ImGui::GetContentRegionAvail().x;
-        const float diagram = std::min(width * 0.5f, em(15.0f));
+        const float diagram = std::min(width * 0.54f, em(18.0f));
         const ImVec2 size(diagram, diagram * 0.62f);
         const ImVec2 at = ImGui::GetCursorScreenPos();
         ImGui::Dummy(size);
-        drawPadDiagram(ImGui::GetWindowDrawList(), at, size, m_backend.padInput().preview(), m_hoveredInput);
+        drawPadDiagram(ImGui::GetWindowDrawList(), at, size, padPreview(), m_hoveredInput,
+                       shown.body);
         ImGui::SameLine(0.0f, em(1.2f));
         ImGui::BeginGroup();
-        ImGui::Dummy(ImVec2(0.0f, em(0.6f)));
-        ImGui::TextUnformatted("Test your bindings");
         ImGui::PushTextWrapPos(0.0f);
+        ImGui::Dummy(ImVec2(0.0f, em(0.2f)));
+        ImGui::TextUnformatted(shown.caption.c_str());
+        ImGui::Dummy(ImVec2(0.0f, em(0.15f)));
         mutedText("%s", "Press anything: the pad lights up with what the game would read.");
-        mutedText("%s", "Click a binding to change it; right-click to clear it.");
+        mutedText("%s", "Each row is what the game asks for; Main and Second are the buttons that do it. "
+                        "Click one to change it, right-click to clear it.");
         ImGui::PopTextWrapPos();
         ImGui::EndGroup();
+    }
+    if (beginSettings("layout")) {
+        settingRow("Controller shown", "Auto follows the connected controller, and shows PlayStation without one.",
+                   nullptr, m_settings.padLayout != def.padLayout);
+        static constexpr const char *kLayouts[] = {"Auto", "PlayStation", "Xbox"};
+        int layout = static_cast<int>(m_settings.padLayout);
+        if (segmented("layout", &layout, kLayouts, 3)) {
+            m_settings.padLayout = static_cast<PadLayout>(layout);
+            markDirty();
+        }
+        endSettings();
     }
     ImGui::Dummy(ImVec2(0.0f, em(0.2f)));
     if (ImGui::BeginTabBar("##bindings")) {
@@ -1000,20 +1015,23 @@ void Overlay::drawControlsPage() {
         config.invertCameraX = def.pad.invertCameraX;
         config.invertCameraY = def.pad.invertCameraY;
         m_settings.backStartOpensMenu = def.backStartOpensMenu;
+        m_settings.padLayout = def.padLayout;
         setPadConfig(config);
         notify("Device and stick settings restored (buttons keep their own Restore button)", Icon::Check);
     }
 }
 
 void Overlay::drawBindingTable(bool keyboard) {
-    const SDL_GamepadType type = displayedControllerType();
+    const ShownPad shown = shownPad();
+    const SDL_GamepadType type = shown.labels;
     const float chip = std::floor(ImGui::GetFrameHeight() * 0.92f);
     PadInput hovered = PadInput::Count;
     const ImGuiTableFlags flags = ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_PadOuterX;
     if (ImGui::BeginTable(keyboard ? "##keys" : "##buttons", 3, flags)) {
-        ImGui::TableSetupColumn("Game button", ImGuiTableColumnFlags_WidthStretch, 1.25f);
-        ImGui::TableSetupColumn(keyboard ? "Key" : "Button", ImGuiTableColumnFlags_WidthStretch, 1.0f);
-        ImGui::TableSetupColumn("Alternative", ImGuiTableColumnFlags_WidthStretch, 1.0f);
+        // Each row reads "the game asks for this <- this button does it".
+        ImGui::TableSetupColumn("In the game", ImGuiTableColumnFlags_WidthStretch, 1.4f);
+        ImGui::TableSetupColumn("Main", ImGuiTableColumnFlags_WidthStretch, 1.0f);
+        ImGui::TableSetupColumn("Second", ImGuiTableColumnFlags_WidthStretch, 0.9f);
         ImGui::PushStyleColor(ImGuiCol_Text, color(palette::kTextMuted));
         ImGui::TableHeadersRow();
         ImGui::PopStyleColor();
@@ -1023,11 +1041,32 @@ void Overlay::drawBindingTable(bool keyboard) {
             ImGui::TableNextColumn();
             ImDrawList *list = ImGui::GetWindowDrawList();
             const ImVec2 at = ImGui::GetCursorScreenPos();
-            const ImVec2 name = ImGui::CalcTextSize(gfx::padInputName(input));
-            ImGui::Dummy(ImVec2(chip + em(0.6f) + name.x, chip));
-            drawPadGlyph(list, input, ImVec2(at.x + chip * 0.5f, at.y + chip * 0.5f), chip * 0.9f);
-            list->AddText(ImVec2(at.x + chip + em(0.6f), std::floor(at.y + (chip - name.y) * 0.5f)), palette::kText,
-                          gfx::padInputName(input));
+            // The game's input as the shown controller names it; the PS2 name
+            // the game itself uses follows, small, when that differs.
+            bool rowFocused = false;
+            const char *shownName = gameInputName(input, shown.body);
+            const char *original = gameInputOriginal(input, shown.body);
+            const ImVec2 name = ImGui::CalcTextSize(shownName);
+            const float textY = std::floor(at.y + (chip - name.y) * 0.5f);
+            const float nameX = at.x + chip + em(0.6f);
+            ImGui::Dummy(ImVec2(ImGui::GetContentRegionAvail().x, chip));
+            drawPadGlyph(list, input, ImVec2(at.x + chip * 0.5f, at.y + chip * 0.5f), chip * 0.9f, shown.body);
+            float used = nameX;
+            // An Xbox face button is a letter, so its name says what it is.
+            const bool faceLetter = shown.body == PadBody::Xbox && index <= static_cast<size_t>(PadInput::Triangle);
+            const std::string title = faceLetter ? std::string(shownName) + " button" : std::string(shownName);
+            list->AddText(ImVec2(nameX, textY), palette::kText, title.c_str());
+            used += ImGui::CalcTextSize(title.c_str()).x + em(0.5f);
+            if (original) {
+                // Small, muted, and only if it fits before the next column.
+                pushScaledFont(0.9f);
+                const ImVec2 small = ImGui::CalcTextSize(original);
+                const float room = at.x + ImGui::GetContentRegionAvail().x - used;
+                if (small.x <= room)
+                    list->AddText(ImVec2(used, std::floor(at.y + (chip - small.y) * 0.5f)), palette::kTextMuted,
+                                  original);
+                ImGui::PopFont();
+            }
 
             for (int slot = 0; slot < static_cast<int>(gfx::kBindingSlots); ++slot) {
                 ImGui::TableNextColumn();
@@ -1038,6 +1077,7 @@ void Overlay::drawBindingTable(bool keyboard) {
                 if (ImGui::InvisibleButton("##bind", ImVec2(cellWidth, chip), ImGuiButtonFlags_EnableNav))
                     beginBindingCapture(input, keyboard, slot);
                 const bool over = ImGui::IsItemHovered() || ImGui::IsItemFocused();
+                rowFocused |= ImGui::IsItemFocused();
                 if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
                     gfx::PadConfig config = m_settings.pad;
                     config.slots(input, keyboard)[slot] = {};
@@ -1047,8 +1087,9 @@ void Overlay::drawBindingTable(bool keyboard) {
                     list->AddRectFilled(ImVec2(cell.x - em(0.2f), cell.y - em(0.12f)),
                                         ImVec2(cell.x + cellWidth, cell.y + chip + em(0.12f)), palette::kHover,
                                         ImGui::GetStyle().FrameRounding);
-                drawBindingChip(list, binding, type, ImVec2(cell.x + em(0.2f), cell.y), chip,
-                                binding.bound() ? 1.0f : 0.7f);
+                // The second binding is the spare: quieter than the main one.
+                const float strength = slot == 0 ? (binding.bound() ? 1.0f : 0.7f) : (binding.bound() ? 0.72f : 0.5f);
+                drawBindingChip(list, binding, type, ImVec2(cell.x + em(0.2f), cell.y), chip, strength);
                 const std::string clash = conflictWith(m_settings.pad, input, keyboard, binding);
                 if (!clash.empty()) {
                     const float x = cell.x + em(0.2f) + bindingChipWidth(binding, type, chip) + em(0.7f);
@@ -1063,7 +1104,8 @@ void Overlay::drawBindingTable(bool keyboard) {
                 }
                 ImGui::PopID();
             }
-            if (ImGui::TableGetHoveredRow() == ImGui::TableGetRowIndex())
+            // A row under the pointer, or holding the keyboard or pad focus.
+            if (ImGui::TableGetHoveredRow() == ImGui::TableGetRowIndex() || rowFocused)
                 hovered = input;
         }
         ImGui::EndTable();
