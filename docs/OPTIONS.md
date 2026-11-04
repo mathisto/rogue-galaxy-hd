@@ -33,7 +33,15 @@ is laid out: [MENU-DESIGN.md](MENU-DESIGN.md).
 - **Sound**: volume and muting.
 - **Controls**: Devices (keyboard, controller, Back + Start opening the
   menu), Sticks and triggers (dead zone, trigger press point, camera
-  inversion), and Button bindings (controller and keyboard remapping).
+  inversion), and Button bindings (controller and keyboard remapping). The
+  controller drawing there is a PlayStation (DualShock 4 / DualSense) or an
+  Xbox (One / Series) one: the connected controller's, PlayStation when there
+  is none, or whichever **Controller shown** (Auto, PlayStation, Xbox; saved as
+  `layout` under `[controls]`) picks. The table reads *In the game* (the input
+  as that controller names it, the game's own PlayStation name small beside it
+  when it differs), then **Main** and **Second**, the two buttons or keys that
+  do it; the pad lights up with what you press, and the row you point at or
+  focus rings its button.
 - **Game**: the game options below, in sections.
 - **Interface**: the menu's size (a small window caps it so the menu fits),
   notifications, pause and fast-forward (its speed: 1.5x, 2x, 3x, 4x, 8x or

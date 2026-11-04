@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- F1 > Controls shows your controller: a drawn PlayStation (DualShock 4,
+  DualSense) or Xbox (One, Series) pad instead of the old generic one, the one
+  connected, PlayStation when none is, or the one **Controller shown** picks
+  (`layout` under `[controls]`, Auto by default). Every button lights as you
+  press it and rings when its row is pointed at or focused with the keyboard
+  or pad. The bindings table is clearer: *In the game* (the input as your
+  controller names it: A, with the game's own Cross small beside it), then
+  **Main** and **Second**, the quieter spare; the buttons are named after the
+  shown controller. The drawings are original, made in code.
 - Setup window and a release that needs no download for the game:
   `RogueGalaxy-Setup.exe` (a small no-console launcher) opens a window to
   choose the disc (ISO, BIN/CUE, CHD or a folder; drop it on the window),

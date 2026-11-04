@@ -170,6 +170,62 @@ Alternative; the cheats notice's Not now to Keep cheats off.
   resolution), no internal terms, Experimental chips kept as the project had
   them.
 
+## Controls: the controller drawing and the bindings table (2026-11-04)
+
+The page drew a DualShock 2 whatever was plugged in, and its table read "Game
+button | Button | Alternative".
+
+**The drawing.** Two original controller bodies, drawn in code
+(`drawPadDiagram`, `ui_glyphs.cpp`: cubic outlines mirrored about the middle,
+a shadow, a rim, a lighter face and one outline; no picture, no third-party
+art): a PlayStation one (DualShock 4 / DualSense: touchpad, Share and Options,
+the PS button, sticks side by side, the Triangle, Circle, Cross and Square
+marks in the menu's own colours) and an Xbox one (One / Series: View, Menu and
+the Xbox button, the left stick up and the right stick down, A, B, X and Y in
+their colours, LB, RB, LT and RT). Every button is lit by what the game reads
+(the PS2 Cross lights A), rung in gold when its row is under the pointer **or
+has the keyboard or pad focus** (new), and the sticks' knobs follow the
+sticks. Which body: the controller in use (PS3, PS4 and PS5 pads: PlayStation;
+Xbox 360 and One: Xbox), PlayStation when none is connected, and PlayStation
+too for a Switch or unknown pad, which has no body of its own here (the
+caption says so, and its buttons are named by position: Cross is the south
+button). A caption beside it says which and why ("DualSense connected", "No
+controller connected: showing PlayStation"). **Controller shown: Auto /
+PlayStation / Xbox** (`[controls] layout = auto|playstation|xbox`, default
+Auto, display only) lets a player with no pad, or one who wants the other
+names, see them. The button names in the table and in the capture prompt follow
+the shown layout.
+
+**The columns: my opinion.** Keep three columns and keep both slots. The code
+has two slots per input, the keyboard fills both for the faces, and players do
+use a second key; dropping the column would lose a feature to tidy a table.
+Showing only the plugged-in controller's column does not apply: the table is
+already one device at a time (the Controller and Keyboard tabs), and
+a binding is a position on any pad, so what a pad changes is the *names*,
+which now follow the shown layout. What was wrong was the words and the
+weight:
+
+- "Game button" names what the game reads, a PS2 button, and the player's
+  pad is often an Xbox: "Cross" next to an "A" chip read as two different
+  buttons. The first column is now **In the game**: the input as the shown
+  controller names it, with a glyph, and the game's own PS2 name small and
+  muted beside it only when it differs ("A button  Cross", "LB  L1",
+  "Menu  Start"; the game's own text says Cross, so the player can still match
+  it).
+- "Button" and "Game button" were near synonyms, and "Alternative" was an
+  alternative to what? The two columns are now **Main** and **Second**; the
+  tab says whether they are buttons or keys. A row reads "in the game: A
+  button, Main: A".
+- The Second column is the spare, empty on the controller by default, so it
+  is quieter (dimmer chip, dimmer dash) and the first sentence beside the
+  drawing says what the table is: "Each row is what the game asks for; Main
+  and Second are the buttons that do it."
+
+Rowcheck on the page: 8 rows, none overlapping, at 1280x720, 1920x1080,
+960x540 and 1280x720 at Menu size 200%, for both bodies and with no pad.
+Labels renamed (keys unchanged): Game button to In the game; Button, Key and
+Alternative to Main and Second.
+
 ## Not done
 
 - A search box: about 40 options in 6 pages with folded groups did not seem
@@ -183,3 +239,8 @@ Alternative; the cheats notice's Not now to Keep cheats off.
   where the game's field is narrow (Encounters, Experience, Money, Prompts).
 - Controller navigation was exercised with injected d-pad presses
   (`RG_UI_SCRIPT` `nav`), not a physical pad.
+- The PlayStation and Xbox drawings are shown for a DualShock or DualSense,
+  an Xbox pad and none; a Switch pad shows the PlayStation one. Only an Xbox
+  pad was ever connected to the test PC: a PlayStation pad is simulated
+  (`RG_FAKE_PAD_TYPE`).
+- The help text of the stick and trigger rows still says L2 and R2.

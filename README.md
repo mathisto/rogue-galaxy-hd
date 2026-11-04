@@ -95,7 +95,10 @@ it again. To uninstall, delete the folder (your saves are in `disc\mc0`).
 
 ## Controls
 
-The game window takes a keyboard or a gamepad (PlayStation layout).
+The game window takes a keyboard or a gamepad (the game reads a PlayStation
+layout). F1 > Settings > Controls shows your own controller, a PlayStation or
+an Xbox one (PlayStation when none is plugged in, or pick it), and lets you
+rebind each button, with a second binding for any of them.
 
 | Pad | Keyboard |
 |---|---|
