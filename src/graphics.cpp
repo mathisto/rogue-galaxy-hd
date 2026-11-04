@@ -34,6 +34,7 @@
 #include "setup_info.h"
 #include "shop_prices.h"
 #include "vif1_thread.h"
+#include "ultrawide.h"
 #include "widescreen.h"
 #include "ps2_runtime.h"
 #include "stick_response.h"
@@ -192,6 +193,12 @@ void applyGameNumber(const std::string &key, int value)
         rg::battlerates::setActionGauge(value);
     else if (key == "widescreen_menus" && !std::getenv("RG_WIDESCREEN_MENUS"))
         rg::widescreen::setMenusPillarboxed(value == 1);
+    else if (key == "hud_area" && !std::getenv("RG_HUD_AREA"))
+        rg::ultrawide::setHudArea(value);
+    else if (key == "hud_placement" && !std::getenv("RG_HUD_PLACEMENT"))
+        rg::ultrawide::setHudPlacement(value);
+    else if (key == "ultrawide_fov" && !std::getenv("RG_ULTRAWIDE_FOV"))
+        rg::ultrawide::setFovCap(value);
 #if defined(RG_HAS_SDLGPU)
     else if (key == "button_prompts")
         rg::hdtext::setPrompts(value);
@@ -561,6 +568,12 @@ std::unique_ptr<dq8::ui::Overlay> createMenu(PS2Runtime &runtime, dq8::gfx::SdlG
         {"widescreen", "Widescreen", "A wider view that fills the window; menus stay 4:3.", false},
         {"widescreen_menus", "Widescreen menus", "Full-screen menus: 4:3 with borders, or stretched wide.", false, 0,
          1, 1, "", 1, true, false, {"Stretched", "4:3 pillarboxed"}},
+        {"hud_area", "HUD area", "How wide the HUD spreads on a window wider than 16:9.", false, 0, 2, 0, "", 1, true,
+         false, {"16:9", "21:9", "Full width"}},
+        {"hud_placement", "HUD placement", "Whether the HUD stays in the middle or goes to the edges of its area.", false, 0, 1,
+         0, "", 1, true, false, {"Centre", "Edges"}},
+        {"ultrawide_fov", "Ultrawide view", "Whether the view keeps widening on a window wider than 16:9 or 21:9.", false, 0, 2,
+         0, "", 1, true, false, {"Widest", "Up to 21:9", "Up to 16:9"}},
         {"field_of_view", "Field of view", "How wide the camera sees; the game's is 52 degrees.", false, 40, 90, 52,
          "%d degrees", 2},
         {"camera_distance", "Camera distance", "How far the camera stays from the party; 100% is the game's.", false,

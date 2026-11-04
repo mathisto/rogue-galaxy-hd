@@ -234,4 +234,9 @@ void setAspect(float aspect)
     g_aspect.store(std::clamp(aspect, 4.0f / 3.0f, 32.0f / 9.0f), std::memory_order_relaxed);
 }
 
+float aspect()
+{
+    return g_aspect.load(std::memory_order_relaxed);
+}
+
 } // namespace rg::widescreen

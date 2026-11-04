@@ -43,6 +43,7 @@
 #include "map_chests.h"
 #include "movie_hd.h"
 #include "opening.h"
+#include "ultrawide.h"
 #include "widescreen.h"
 #include "quick_scenes.h"
 #include "scene_timing.h"
@@ -168,6 +169,7 @@ int run(int argc, char **argv)
 #endif
     rg::loading::install(runtime);
     rg::widescreen::install(runtime);
+    rg::ultrawide::install(runtime);
     rg::opening::install(runtime);
     rg::devtools::install(runtime);
     rg::cameraview::install(runtime);

@@ -89,6 +89,7 @@ add_executable(roguegalaxy
     map_chests.cpp
     opening.cpp
     widescreen.cpp
+    ultrawide.cpp
     scene_timing.cpp
     settings_pages.cpp
     shop_prices.cpp

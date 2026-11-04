@@ -12,6 +12,8 @@
 
 #include "ps2_runtime.h"
 #include "scene_timing.h"
+#include "ultrawide.h"
+#include "widescreen.h"
 
 namespace rg::cameraview
 {
@@ -164,6 +166,11 @@ void viewSetProjection(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
         }
     }
     followDistance(rdram, mode);
+    // Ultrawide: the horizontal angle can be held at 16:9's or 21:9's.
+    if (rg::ultrawide::fovCapped() && ctx->f[12] > 0.0f && ctx->f[12] < 1.5f && rg::widescreen::wide())
+    {
+        ctx->f[12] = rg::ultrawide::cappedVerticalFov(ctx->f[12]);
+    }
     g_viewSetProjection(rdram, ctx, runtime);
 }
 

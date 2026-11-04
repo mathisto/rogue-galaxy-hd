@@ -53,5 +53,6 @@ bool wide();
 // The shape the picture is shown at with the option on, width over height
 // (16:9 until told); clamped to 4:3..32:9.
 void setAspect(float aspect);
+float aspect();
 
 } // namespace rg::widescreen
