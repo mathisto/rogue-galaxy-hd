@@ -59,7 +59,7 @@ and your own image of the disc: Rogue Galaxy, USA, SCUS-97490
    pick the parts one by one, each with its disk space and time. The window
    lists every file it would download, with its address, size, SHA-256 and
    licence, and waits for your yes; the game itself needs no download, the
-   build tools are in the zip. Building the game takes about 20 to 25 minutes
+   build tools are in the zip. Building the game takes roughly 10 to 25 minutes (11 to 21 on the author's PC)
    on a fast PC (the author's: Ryzen 9 7900X, RTX 5070 Ti), up to an hour on
    a slower one; the HD parts add more, as the window says. You can use the
    PC meanwhile, and **Cancel** keeps what is finished.
