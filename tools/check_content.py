@@ -100,6 +100,9 @@ def list_files(args):
     return ROOT, [ROOT / p for p in out.decode('utf-8').split('\0') if p and (ROOT / p).is_file()]
 
 
+PUBLIC_PROJECT_URL = b'github.com/mathisto/rogue-galaxy-hd'
+
+
 def problems_for(path, base, sizes, needles, personal, repo_mode=False):
     found = []
     rel = path.relative_to(base)
@@ -126,8 +129,10 @@ def problems_for(path, base, sizes, needles, personal, repo_mode=False):
             if needle in data:
                 found.append(f'holds bytes of the disc file {name}')
                 break
+        # The published project address names the fork's owner on purpose; it is not a personal path.
+        scan = data.replace(PUBLIC_PROJECT_URL, b'')
         for pat, text in personal.items():
-            if pat in data:
+            if pat in scan:
                 found.append(f'holds a personal path or name ({text!r})')
                 break
     return found
