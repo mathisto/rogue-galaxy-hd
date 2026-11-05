@@ -52,10 +52,15 @@ constexpr uint32_t kPauseFunctions[] = {0x002F5C40u};
 // tasks: the names over characters and enemies and the markers (ScreenMarkerDrawAll),
 // the damage numbers, the door cursors. What they draw keeps the x the scene gives it.
 constexpr uint32_t kWorldFunctions[] = {0x0031AF50u, 0x002D2EA0u, 0x002E7E10u, 0x00304AA0u};
-// Where the minimap's tiles are written (MinimapDraw's 16x16 strips): not onto the screen
+// Sprites that are not drawn onto the screen where they land. The minimap's tiles (MinimapDraw's 16x16 strips): not onto the screen
 // where they end up but onto a part of the picture the game uses to build the map, which a
 // polygon then reads from by its position. Moved, they would be read from the wrong place.
-constexpr uint32_t kScratchSites[] = {0x0032909Cu, 0x003290D0u};
+constexpr uint32_t kScratchSites[] = {
+    0x0032909Cu, 0x003290D0u, // the minimap's strips
+    0x003259B8u, 0x003259CCu, // the sprite that starts the minimap, as wide as the frame
+    // The copies of the screen the game draws in strips (the filters over the pause, the blurs): not HUD.
+    0x001424BCu, 0x001424D0u, 0x001412E8u, 0x0014130Cu,
+};
 constexpr uint32_t kViewSetScreenMatrix = 0x001562B0u;
 constexpr uint32_t kCompassStart = 0x00370FB0u;
 constexpr uint32_t kCompassEnd = 0x00371470u;
@@ -76,6 +81,8 @@ constexpr float kFrameWidth = 512.0f;
 // A sprite from within this of both edges of the frame covers the screen.
 constexpr float kWholeMargin = 2.0f;
 // A sprite this much of the frame wide is a backdrop (a dimming, a band behind an emblem), not a part of a picture.
+// A sprite this close to a side of the frame is its border (the game leaves a black one), not HUD.
+constexpr float kEdgeStrip = 8.0f;
 constexpr float kBackdropWidth = 0.9f * 512.0f;
 constexpr float kFrameHalf = 256.0f;
 constexpr float kSixteenNine = 16.0f / 9.0f;
@@ -115,6 +122,8 @@ std::atomic<int> g_fovCap{0};
 uint32_t g_task = 0u;
 // How many of kWorldFunctions are running.
 uint32_t g_world = 0u;
+bool g_pauseLog = false;
+bool g_pauseLog2 = false;
 // The scissor last written (x edges, in frame pixels, the right one exclusive), 0..0 when it is the
 // frame's: what a picture is clipped to says what it belongs to.
 float g_clip0 = 0.0f;
@@ -137,14 +146,18 @@ std::map<uint32_t, Cls> g_classes = {
     {0x002058B0u, Cls::Hud},  // TaskDrawStatus
     {0x0027A8B0u, Cls::Text}, // TaskDrawMessage
     {0x001FFB00u, Cls::Text}, // TaskDrawCaption
+    {0x00204320u, Cls::Text}, // TaskDrawMenuWin (the battle results)
     {0x002F5C40u, Cls::Text}, // PauseReasonDrawMaybe
     {0x003387A0u, Cls::Text}, // TaskDrawTBox
 };
 
+// What a task that is not listed is: nothing (RG_UW_DEFAULT unset), or text in the 16:9 box.
+Cls g_unlisted = Cls::None;
+
 Cls classOf(uint32_t task)
 {
     const auto found = g_classes.find(task);
-    return found == g_classes.end() ? Cls::None : found->second;
+    return found == g_classes.end() ? g_unlisted : found->second;
 }
 
 float areaAspect(float windowAspect)
@@ -245,7 +258,8 @@ void note(int writer, uint32_t ra, float x, int origin = -1)
     if (now - g_lastDump > std::chrono::seconds(6))
     {
         g_lastDump = now;
-        std::fprintf(stderr, "[uw] -----\n");
+        const auto epoch = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+        std::fprintf(stderr, "[uw] ----- %.0f s\n", static_cast<double>(epoch % 100000));
         for (const auto &[key, value] : g_stats)
         {
             std::fprintf(stderr, "[uw] task=%08X ra=%08X w=%d n=%u x=%.1f..%.1f\n", std::get<0>(key),
@@ -505,12 +519,23 @@ void flushBatch(uint8_t *rdram)
     std::vector<BatchSpan> spans;
     spans.swap(g_spans);
     const Cls cls = g_batchClass;
+    if (g_trace && g_pauseLog2)
+    {
+        g_pauseLog2 = false;
+        std::fprintf(stderr, "[uw] ---- all spans after the pause text, %zu\n", spans.size());
+        for (const BatchSpan &sp : spans)
+        {
+            std::fprintf(stderr, "[uw]   all site %08X x %.1f..%.1f y %.1f..%.1f clip %.0f..%.0f\n", sp.site, sp.x0, sp.x1, sp.y0, sp.y1,
+                         sp.clip0, sp.clip1);
+        }
+    }
     // Sprites as wide as the frame (a fade, a filter, a picture of the screen)
     // stay whole.
     std::vector<BatchSpan> parts;
     for (const BatchSpan &span : spans)
     {
-        if ((span.x0 <= kWholeMargin && span.x1 >= kFrameWidth - kWholeMargin) || span.x1 - span.x0 >= kBackdropWidth)
+        if ((span.x0 <= kWholeMargin && span.x1 >= kFrameWidth - kWholeMargin) || span.x1 - span.x0 >= kBackdropWidth ||
+            span.x1 <= kEdgeStrip || span.x0 >= kFrameWidth - kEdgeStrip)
         {
             for (size_t v = span.first; v <= span.last; ++v)
             {
@@ -534,6 +559,16 @@ void flushBatch(uint8_t *rdram)
                 std::fprintf(stderr, "[uw] wide span task=%08X site=%08X x=%.1f..%.1f y=%.1f..%.1f\n", g_task, span.site, span.x0,
                              span.x1, span.y0, span.y1);
             }
+        }
+    }
+    if (g_trace && g_pauseLog)
+    {
+        g_pauseLog = false;
+        std::fprintf(stderr, "[uw] ---- after the pause text, %zu spans, class %d\n", parts.size(), static_cast<int>(cls));
+        for (size_t i = 0; i < parts.size() && i < 60u; ++i)
+        {
+            std::fprintf(stderr, "[uw]   site %08X x %.1f..%.1f y %.1f..%.1f\n", parts[i].site, parts[i].x0, parts[i].x1,
+                         parts[i].y0, parts[i].y1);
         }
     }
     if (g_trace)
@@ -703,7 +738,7 @@ void emit(uint8_t *rdram, uint32_t packet, float x, int32_t y16, int32_t z, Cls 
         flushBatch(rdram);
     }
     g_batchClass = cls;
-    if (!g_clipPlaced && g_clipQuad != 0u && g_clip1 > g_clip0)
+    if (!g_clipPlaced && g_clipQuad != 0u && g_clip1 > g_clip0 && g_task != kPauseFunctions[0])
     {
         float first, second;
         mapSpan(g_clip0, g_clip1, cls, first, second);
@@ -717,19 +752,37 @@ void emit(uint8_t *rdram, uint32_t packet, float x, int32_t y16, int32_t z, Cls 
     }
     const bool sprite = (read<uint8_t>(rdram, packet + kPacketPrim) & 7u) == kPrimSprite;
     const float y = static_cast<float>(y16) / 16.0f;
+    static std::vector<uint32_t> skipped = [] {
+        std::vector<uint32_t> list;
+        if (const char *text = std::getenv("RG_UW_SKIP"))
+        {
+            for (const char *at = text; *at;)
+            {
+                char *end = nullptr;
+                list.push_back(static_cast<uint32_t>(std::strtoul(at, &end, 16)));
+                if (end == at) break;
+                at = (*end == ',') ? end + 1 : end;
+            }
+        }
+        return list;
+    }();
+    bool unmoved = std::find(skipped.begin(), skipped.end(), site) != skipped.end();
+    // Under the pause screen's text only the text is moved: the rest it draws are the filters over the scene.
+    unmoved = unmoved || (g_task == kPauseFunctions[0] && (site < 0x002F5C40u || site >= 0x002F5FB0u));
     for (const uint32_t scratch : kScratchSites)
     {
-        if (site == scratch)
-        {
-            // Written as the game would write it.
-            const int32_t plain = static_cast<int32_t>(std::lround(x * 16.0f)) + originX;
-            const int64_t value = (static_cast<int64_t>(z) << 32) | static_cast<int64_t>(plain) |
-                                  (static_cast<int64_t>(y16 + originY) << 16);
-            write<int64_t>(rdram, pointer, value);
-            write<int64_t>(rdram, pointer + 8u, kRegisterXyz2);
-            write<uint32_t>(rdram, packet + kPacketWrite, pointer + 0x10u);
-            return;
-        }
+        unmoved = unmoved || site == scratch;
+    }
+    if (unmoved)
+    {
+        // Written as the game would write it.
+        const int32_t plain = static_cast<int32_t>(std::lround(x * 16.0f)) + originX;
+        const int64_t value = (static_cast<int64_t>(z) << 32) | static_cast<int64_t>(plain) |
+                              (static_cast<int64_t>(y16 + originY) << 16);
+        write<int64_t>(rdram, pointer, value);
+        write<int64_t>(rdram, pointer + 8u, kRegisterXyz2);
+        write<uint32_t>(rdram, packet + kPacketWrite, pointer + 0x10u);
+        return;
     }
     const size_t index = g_batch.size();
     if (g_trace)
@@ -992,7 +1045,7 @@ void writeAd(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
                 note(6, getRegU32(ctx, 31), static_cast<float>(x0 * 1000 + x1));
             }
             const Cls cls = current(rdram, getRegU32(ctx, 4));
-            if (cls != Cls::None && !whole)
+            if (cls != Cls::None && !whole && g_task != kPauseFunctions[0])
             {
                 float first, second;
                 mapSpan(static_cast<float>(x0), static_cast<float>(x1 + 1), cls, first, second);
@@ -1042,6 +1095,8 @@ void scopedEntry(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
     g_context = ctx;
     flushBatch(rdram);
     g_task = kPauseFunctions[Index];
+    g_pauseLog = true;
+    g_pauseLog2 = true;
     g_scoped[Index](rdram, ctx, runtime);
 }
 
@@ -1132,6 +1187,10 @@ void install(PS2Runtime &runtime)
     if (const char *value = std::getenv("RG_UW_MODE"))
     {
         g_debugMode = std::atoi(value);
+    }
+    if (const char *value = std::getenv("RG_UW_DEFAULT"))
+    {
+        g_unlisted = *value == 'T' ? Cls::Text : Cls::None;
     }
     if (const char *value = std::getenv("RG_UW_TRACE"))
     {

@@ -11,6 +11,8 @@
   changes. New settings.ini keys `hud_area`, `hud_placement`, `ultrawide_fov`. How it works and what was checked:
   docs/ULTRAWIDE.md. Not done: the 2D is still drawn at the game's 512 columns, so at 32:9 it is soft sideways (a window
   resolution HUD layer would fix that; see the doc), and the cutscene letterbox and the bloom are as they were.
+  Also fixed at 32:9: coloured specks at the minimap's left edge, the dark seam in the pause dimming, and the battle results
+  screen, which now sits in the HUD box instead of stretching.
 
 - F1 > Controls shows your controller: a drawn PlayStation (DualShock 4,
   DualSense) or Xbox (One, Series) pad instead of the old generic one, the one

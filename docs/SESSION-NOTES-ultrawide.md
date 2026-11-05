@@ -49,3 +49,7 @@ what could not be reached.
 ## Time
 
 See the final report of the session (wall clock, tool calls, builds, runs).
+
+## Follow-up round
+
+Minimap left-edge specks: the minimap build reads its strips back by position; its whole-frame start sprite (0x3259B8/0x3259CC) was being moved. Fixed by adding it to kScratchSites. Pause seam: under the pause scope only 0x2F5C40..0x2F5FB0 sites are mapped. Results screen: task 0x204320 as Text. Edges verified: compass bottom-left, minimap bottom-right. Debug env: RG_UW_SKIP, RG_UW_DEFAULT, RG_UW_WORLD.

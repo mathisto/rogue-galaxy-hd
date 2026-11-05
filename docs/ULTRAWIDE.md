@@ -71,14 +71,16 @@ Juraika: Path to Burkaqua, the party at the first transporter), a Cross script. 
 | Main menu | unchanged | unchanged | 4:3 between the Borders | 4:3 between the Borders (checked) |
 | Pause | unchanged | identical (below) | text in the 16:9 box | same |
 | Battle HUD (gauges, party panel, radar, names) | not captured | not captured | right, 16:9 area | right, 16:9 area |
-| Results screen after a battle | | | stretched (gap) | stretched (gap) |
+| Results screen after a battle | | | in the 16:9 box (task 0x204320, Text) | in the 16:9 box |
 | Field of view cap | | | | Up to 21:9, Up to 16:9: the horizontal angle held, less above and below |
 | Settings menu rows | `rowcheck`: 27 rows on the Game page, 0 overlapping, at 1280x720 (not run at other sizes) | | | |
 
 **16:9 identity.** Two runs of the old build never match pixel for pixel (the scene animates: 42% of the field frame differs
 between two runs of the same exe), so a screenshot diff of a live scene proves nothing. The pause frame is frozen: the old
 build's second run and the new build's first run, at 1920x1080, have **0 differing pixels** in the whole frame (compass, minimap,
-dimming and the PAUSE text included); the other pairs froze the scene at another moment. The code path agrees: below 16:9 every
+dimming and the PAUSE text included); the other pairs froze the scene at another moment. That pair was taken before the
+follow-up round; after it no new identical frame was captured (the runs animate), so for the later changes the evidence is the
+gate: nothing in the follow-up changes runs unless the window is wider than 16:9. The code path agrees: below 16:9 every
 hook calls the game's own function unchanged.
 
 Not reached: a cutscene event (letterbox and captions; this save reaches none; the New Game prologue does, but it was not run),
@@ -95,12 +97,13 @@ the battle at 1920x1080 and 4:3, other HUD areas in battle, a window narrower th
   through the message path, so they sit in the 16:9 box.
 - The bloom and focus-blur kernels work in frame pixels and are 2.67 times as wide on screen as tall at 32:9: a softer,
   sideways glow. Not changed.
-- The pause screen's dimming has a thin dark seam at the edges of the HUD box (the sprites that dim the scene are not
-  exactly the frame wide, so they were mapped; the dimming itself is not touched).
-- The results screen after a battle (Exp, Skills, Acquired Items) is drawn by a task that is not in the table of HUD tasks, so it is as
-  stretched as it was. Likewise anything not listed in `g_classes`.
-- The minimap's map is built in strips written into the picture; those strips are skipped by their call sites (`kScratchSites`).
-  Another element built the same way would show as a missing or shifted piece.
+- Anything not listed in `g_classes` is as stretched as it was (the battle results screen, task 0x204320, is now listed).
+- Fixed in this round: the pause dimming seam (under the pause scope only the text's own call sites, 0x2F5C40..0x2F5FB0, are
+  mapped; the filter sprites over the scene and the scissor stay as the game writes them), and the multicoloured pixels at the
+  left edge of the minimap (the map is built in strips written into the picture and read back by position, and the
+  whole-frame start sprite of that build, 0x3259B8/0x3259CC, was being moved, so the read-back picked up other data; all of
+  these sites are in `kScratchSites` and are written unmoved). Another element built the same way would show as a missing
+  or shifted piece or as such noise: add its site to `kScratchSites`.
 - Two HUD tasks of the battle (the damage popups and the target marks) were judged world-anchored from their origin and not
   mapped; a few elements that follow the picture may still be missing from the table. A missing task shows up as a piece of
   the HUD left at its 16:9 position over the wide picture.
