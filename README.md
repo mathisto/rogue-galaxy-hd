@@ -211,6 +211,9 @@ checklist, and [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) the licences.
 
 ## Credits
 
+- This is a fork of [victor-takai/rogue-galaxy-recomp](https://github.com/victor-takai/rogue-galaxy-recomp),
+  which first got the game running on PS2Recomp. The HD textures, HD cutscenes, ultrawide,
+  setup program, controller art, cheats and menu work here are built on top of it.
 - [PS2Recomp](https://github.com/ran-j/PS2Recomp) by ran-j, and the
   [fork](https://github.com/Sinan-Karakaya/PS2Recomp) by Sinan Karakaya.
 - [DQ8-Recompiled](https://github.com/Sinan-Karakaya/DQ8-Recompiled) by Sinan

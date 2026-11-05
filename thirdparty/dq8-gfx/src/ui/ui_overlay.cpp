@@ -26,8 +26,8 @@ constexpr const char *kQuitShortcut = "Cmd+Q";
 #else
 constexpr const char *kQuitShortcut = "Alt+F4";
 #endif
-constexpr const char *kProjectUrl = "https://github.com/victor-takai/rogue-galaxy-recomp";
-constexpr const char *kIssuesUrl = "https://github.com/victor-takai/rogue-galaxy-recomp/issues";
+constexpr const char *kProjectUrl = "https://github.com/mathisto/rogue-galaxy-hd";
+constexpr const char *kIssuesUrl = "https://github.com/mathisto/rogue-galaxy-hd/issues";
 
 // Function keys the menu owns, and F6, the game's free camera (Rogue Galaxy:
 // added); binding one would fight the shortcut.

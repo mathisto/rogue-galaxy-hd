@@ -24,8 +24,8 @@ constexpr Icon kPageIcons[] = {Icon::Display, Icon::Sound, Icon::Controls, Icon:
 
 // The Cheats page's options, in the host's list with the Game page's (Rogue Galaxy: added).
 bool isCheatKey(const std::string &key) { return key.rfind("cheat", 0) == 0; }
-constexpr const char *kProjectUrl = "https://github.com/victor-takai/rogue-galaxy-recomp";
-constexpr const char *kIssuesUrl = "https://github.com/victor-takai/rogue-galaxy-recomp/issues";
+constexpr const char *kProjectUrl = "https://github.com/mathisto/rogue-galaxy-hd";
+constexpr const char *kIssuesUrl = "https://github.com/mathisto/rogue-galaxy-hd/issues";
 
 constexpr ImGuiWindowFlags kDialogFlags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse |
                                           ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoSavedSettings |
