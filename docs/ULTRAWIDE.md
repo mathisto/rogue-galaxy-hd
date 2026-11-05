@@ -142,3 +142,29 @@ What it needs:
 About **20 to 27 hours of working time**, three working days at the pace of this branch (builds are a minute; the runs
 are three minutes each, four at a time). The risk is in 3 and 5. A cheaper step that gets part of the sharpness is a per-surface
 x and y scale (the spike's F3), which costs more and sharpens the world as well.
+
+## Tutorial boards and the sweep of other screens (2026-11-05)
+
+The first-battle tutorial board ("Basic Battle Controls (1) 01/03", pictures, "Press the Menu button") is drawn by
+`TaskDrawEvent1` (0x27AB50), not by the help menu's task (0x203280, which is the main menu's Help). It was unlisted, so the
+whole board was stretched over the window (`tutorial_32_before.jpg`). Listed as Text it sits in the 16:9 box with its
+proportions (`tutorial_32_after.jpg`, 1920x540). `0x203280` is listed too, for the help menu when menus are not pillarboxed.
+
+Reached by a new game and a scripted run (hidden window, Cross every 2 s, 1920x540, scratch card, about 9 minutes to the
+board): the prologue and the event cutscenes (letterbox), the tutorial board pages 1 to 3, the battle HUD and the field. Seen at
+32:9 and fixed: the tutorial board. Seen and as before: event letterbox and captions, battle gauges.
+
+Not reached (nothing was drawn at 32:9 for them; only reasoned from the task table): shops (`TaskDrawMenuShop` 0x203720), the
+warp menu (0x1FFB60), EasyChange (0x2030A0), Think (0x203620), CompleteCheck (0x203450), 7th Mystery (0x203530), Insectron
+and Disc menus, Factory, Item Creation, the world map, Save/Load, Options and the Jaws of Hell. The menu modes (14, 16, 17, 19,
+20) are shown 4:3 between bars by default, so they do not stretch; the field-mode ones (shops, warp) may. To try one,
+`RG_UW_TASKS=` with its address as `T` (for example `RG_UW_TASKS=<the default table>,203720:T`) and look at it; `RG_UW_TRACE=2`
+logs each task the first time it draws, with its target origin and class (cheap; `RG_UW_TRACE=1` is too slow in a heavy scene).
+They are not listed because a task listed blind could break a screen that is fine.
+
+**Open: the picture is 80% as wide as the window in the tutorial battle.** With the HUD table on (default or the round-2
+one), the first battle's screenshots show the whole picture, scene included, squeezed to 80% of the window width with black
+at the right (`tutorial_2560_after_strip.jpg`, from 2560x720). It does not happen with an empty table (`RG_UW_TASKS=1:N`),
+with only the HUD tasks, with only the Text tasks, or at 16:9. Both groups together do it. A stale scissor was tried and
+ruled out. Not found; it needs a trace of the scissor writes (GsPktWriteAD, register 0x40) in that battle. Screenshots of
+this battle at 5120x1440 also came back partly garbage, so the user's screen should be looked at.

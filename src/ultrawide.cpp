@@ -8,6 +8,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <map>
+#include <set>
 #include <string>
 #include <numeric>
 #include <iterator>
@@ -133,6 +134,7 @@ float g_clip1 = 0.0f;
 uint32_t g_clipQuad = 0u;
 bool g_clipPlaced = true;
 bool g_trace = false;
+bool g_traceNew = false; // RG_UW_TRACE=2
 int g_debugMode = 0; // RG_UW_MODE: 1 no sprite pairs, 2 modify the arguments and call the original
 
 constexpr uint32_t kCompassTask = 0x001F6F60u; // CompassHudDraw
@@ -149,6 +151,8 @@ std::map<uint32_t, Cls> g_classes = {
     {0x00204320u, Cls::Text}, // TaskDrawMenuWin (the battle results)
     {0x002F5C40u, Cls::Text}, // PauseReasonDrawMaybe
     {0x003387A0u, Cls::Text}, // TaskDrawTBox
+    {0x0027AB50u, Cls::Text}, // TaskDrawEvent1 (drawn when a tutorial board opens)
+    {0x00203280u, Cls::Text}, // TaskDrawMenuHelp (the main menu's help, pillarboxed unless menus are stretched)
 };
 
 // What a task that is not listed is: nothing (RG_UW_DEFAULT unset), or text in the 16:9 box.
@@ -416,6 +420,17 @@ constexpr int kPictureOrigin = 2048 - 256;
 // Whether the draw being written into `packet` is mapped, and as what.
 Cls current(uint8_t *rdram, uint32_t packet)
 {
+    if (g_traceNew && g_task != 0u && active())
+    {
+        // RG_UW_TRACE=2: each (task, target origin) the first time it draws, with the class it has.
+        static std::set<uint64_t> seen;
+        const int origin = originOf(rdram, packet);
+        if (seen.insert((static_cast<uint64_t>(g_task) << 32) | static_cast<uint32_t>(origin)).second)
+        {
+            std::fprintf(stderr, "[uw] new draw: task %08X origin %d class %d world %u\n", g_task, origin,
+                         static_cast<int>(classOf(g_task)), g_world);
+        }
+    }
     if (g_task == 0u || g_world != 0u || !active() || originOf(rdram, packet) != kPictureOrigin)
     {
         return Cls::None;
@@ -1194,7 +1209,8 @@ void install(PS2Runtime &runtime)
     }
     if (const char *value = std::getenv("RG_UW_TRACE"))
     {
-        g_trace = *value && *value != '0';
+        g_traceNew = *value == '2';
+        g_trace = *value && *value != '0' && !g_traceNew;
     }
     // Bisecting: RG_UW_HOOKS is a mask, 1 the task tables, 2 the writers.
     const char *mask = std::getenv("RG_UW_HOOKS");
