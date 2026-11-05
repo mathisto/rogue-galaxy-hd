@@ -135,6 +135,7 @@ uint32_t g_clipQuad = 0u;
 bool g_clipPlaced = true;
 bool g_trace = false;
 bool g_traceNew = false; // RG_UW_TRACE=2
+bool g_traceClip = false; // RG_UW_TRACE=3
 int g_debugMode = 0; // RG_UW_MODE: 1 no sprite pairs, 2 modify the arguments and call the original
 
 constexpr uint32_t kCompassTask = 0x001F6F60u; // CompassHudDraw
@@ -493,6 +494,21 @@ bool grouped(Cls cls)
 
 void setVertexX(uint8_t *rdram, const BatchVertex &vertex, float x)
 {
+    if (g_traceClip && read<uint64_t>(rdram, vertex.quad + 8u) != kRegisterXyz2)
+    {
+        static int stale = 0;
+        if (stale++ < 40)
+        {
+            std::fprintf(stderr, "[uw] stale vertex quad %08X task %08X (register %llX)\n", vertex.quad, g_task,
+                         static_cast<unsigned long long>(read<uint64_t>(rdram, vertex.quad + 8u)));
+        }
+    }
+    // The packet may be gone by now (a draw list the game reuses before the run is over): never write into what is no
+    // longer this vertex.
+    if (read<uint64_t>(rdram, vertex.quad + 8u) != kRegisterXyz2)
+    {
+        return;
+    }
     const uint64_t data = read<uint64_t>(rdram, vertex.quad);
     const uint32_t x16 = static_cast<uint32_t>(std::lround(x * 16.0f) + vertex.originX) & 0xFFFFu;
     write<uint64_t>(rdram, vertex.quad, (data & ~0xFFFFull) | x16);
@@ -759,10 +775,14 @@ void emit(uint8_t *rdram, uint32_t packet, float x, int32_t y16, int32_t z, Cls 
         mapSpan(g_clip0, g_clip1, cls, first, second);
         const int32_t left = static_cast<int32_t>(std::floor(first + 0.001f));
         const int32_t right = static_cast<int32_t>(std::ceil(second - 0.001f)) - 1;
-        const uint64_t data = read<uint64_t>(rdram, g_clipQuad);
-        write<uint64_t>(rdram, g_clipQuad,
-                        (data & ~0xFFFFFFFFull) | static_cast<uint64_t>(left & 0xFFFF) |
-                            (static_cast<uint64_t>(right & 0xFFFF) << 16));
+        // Only while the quad is still the scissor (the packet may be reused).
+        if (read<uint64_t>(rdram, g_clipQuad + 8u) == 0x40u)
+        {
+            const uint64_t data = read<uint64_t>(rdram, g_clipQuad);
+            write<uint64_t>(rdram, g_clipQuad,
+                            (data & ~0xFFFFFFFFull) | static_cast<uint64_t>(left & 0xFFFF) |
+                                (static_cast<uint64_t>(right & 0xFFFF) << 16));
+        }
         g_clipPlaced = true;
     }
     const bool sprite = (read<uint8_t>(rdram, packet + kPacketPrim) & 7u) == kPrimSprite;
@@ -1052,6 +1072,15 @@ void writeAd(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
         g_clip0 = whole ? 0.0f : static_cast<float>(x0);
         g_clip1 = whole ? 0.0f : static_cast<float>(x1 + 1);
         g_clipQuad = read<uint32_t>(rdram, getRegU32(ctx, 4) + kPacketWrite);
+        if (g_traceClip)
+        {
+            static std::set<uint64_t> seenClip;
+            if (seenClip.insert((static_cast<uint64_t>(g_task) << 32) | (static_cast<uint64_t>(x0 & 0xFFF) << 16) | static_cast<uint32_t>(x1 & 0xFFFF)).second)
+            {
+                std::fprintf(stderr, "[uw] scissor task %08X x %d..%d whole %d origin %d ra %08X\n", g_task, x0, x1, whole ? 1 : 0,
+                             originOf(rdram, getRegU32(ctx, 4)), getRegU32(ctx, 31));
+            }
+        }
         g_clipPlaced = whole;
         if (g_task != 0u)
         {
@@ -1209,7 +1238,8 @@ void install(PS2Runtime &runtime)
     }
     if (const char *value = std::getenv("RG_UW_TRACE"))
     {
-        g_traceNew = *value == '2';
+        g_traceNew = *value == '2' || *value == '3';
+        g_traceClip = *value == '3';
         g_trace = *value && *value != '0' && !g_traceNew;
     }
     // Bisecting: RG_UW_HOOKS is a mask, 1 the task tables, 2 the writers.

@@ -162,9 +162,11 @@ and Disc menus, Factory, Item Creation, the world map, Save/Load, Options and th
 logs each task the first time it draws, with its target origin and class (cheap; `RG_UW_TRACE=1` is too slow in a heavy scene).
 They are not listed because a task listed blind could break a screen that is fine.
 
-**Open: the picture is 80% as wide as the window in the tutorial battle.** With the HUD table on (default or the round-2
-one), the first battle's screenshots show the whole picture, scene included, squeezed to 80% of the window width with black
-at the right (`tutorial_2560_after_strip.jpg`, from 2560x720). It does not happen with an empty table (`RG_UW_TASKS=1:N`),
-with only the HUD tasks, with only the Text tasks, or at 16:9. Both groups together do it. A stale scissor was tried and
-ruled out. Not found; it needs a trace of the scissor writes (GsPktWriteAD, register 0x40) in that battle. Screenshots of
-this battle at 5120x1440 also came back partly garbage, so the user's screen should be looked at.
+**Fixed: the picture 80% as wide as the window in the tutorial battle.** The cause was a write into memory that was no
+longer ours. A vertex's x is placed when the table run ends, into the packet the vertex was written to; the minimap's draw
+(`MinimapDraw`, 0x1FFBC0) in that battle had packets the game reuses before the run is over, so the late write landed on
+other data (found with `RG_UW_TRACE=3`: 40 "stale vertex" lines, the quad no longer holding an XYZ2 register, the contents
+floats and counters). That corrupted something the presentation reads, and the picture came out 80% wide with black at the
+right. Placing a vertex (and the late scissor patch) now checks that the quad is still an XYZ2 (or SCISSOR) quad and does
+nothing otherwise. Verified at 1920x540, 2560x720, 5120x1440 and 1280x720 (below).
+
