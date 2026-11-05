@@ -107,11 +107,30 @@ Game
 
 | Old | New |
 |---|---|
-| Camera and view (8) | Camera and view (8), unchanged |
+| Camera and view (8) | Camera and view (11): **HUD area**, **HUD placement** and **Ultrawide field of view** added after Widescreen menus (2026-11-04, below) |
 | Convenience (7, HD movies among them) | Convenience (6) |
 | Battles and rewards (6) | Battles and rewards (6) |
 | Text and prompts: Button prompts, Font, Texture replacements, Texture pack memory | Text and HD content: Button prompts, Font, **HD movies**, Texture replacements |
 | Developers: Developer tools | **Advanced** (folded): Texture pack memory, Developer tools |
+
+### Game: the ultrawide rows (2026-11-04)
+
+Three rows in Camera and view, after Widescreen menus, which they follow in meaning: Widescreen turns the wide picture on,
+the next rows say how the 2D sits on it and how far the view widens. Each is a segmented choice (the existing `choices`
+control, a value from its minimum, as Widescreen menus and Button prompts are), so the three states are in view and one
+press changes them; none needs a number. New `settings.ini` keys only (`hud_area`, `hud_placement`, `ultrawide_fov`, under
+`[game]`); nothing was renamed.
+
+| Row | Choices | One-line help (kept to a line at 960 wide) | Why this wording |
+|---|---|---|---|
+| HUD area | 16:9, 21:9, Full width | How wide the HUD spreads on a window wider than 16:9. | The choices are the shapes themselves; "area" is the word the help uses again, so the three rows read as one idea (an area, its placement, the view). "Full width" says what 32:9 shows on a 32:9 window without naming a shape the player may not have. |
+| HUD placement | Centre, Edges | Where the HUD sits inside that area. | "Centre" and "Edges" are positions, not styles; the long help (tooltip) says which parts go to the edges. |
+| Ultrawide field of view | No limit, Up to 21:9, Up to 16:9 | How far the view may widen on a window wider than 16:9. | Not "Hor+" and not "Widest": the player sees a limit or none, in the shapes they know. It sits beside the Field of view slider and says "field of view" in full so the two are found together. |
+
+The help says "on a window wider than 16:9" in all three because that is when they do anything: on a 16:9 or narrower
+window nothing changes, and the rows stay visible (a hidden row would hide that the option exists). The default of each is its
+first choice (16:9, Centre, No limit): nothing is capped until the player asks. `rowcheck` was run on the page with the rows
+in; the sizes and the result are in SESSION-NOTES-ultrawide.md.
 
 Interface: Menu (Menu size, Notifications, Hide the idle mouse cursor; Back +
 Start moved to Controls), Pause and speed, Frame rate. Sound is unchanged

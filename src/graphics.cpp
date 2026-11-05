@@ -570,10 +570,10 @@ std::unique_ptr<dq8::ui::Overlay> createMenu(PS2Runtime &runtime, dq8::gfx::SdlG
          1, 1, "", 1, true, false, {"Stretched", "4:3 pillarboxed"}},
         {"hud_area", "HUD area", "How wide the HUD spreads on a window wider than 16:9.", false, 0, 2, 0, "", 1, true,
          false, {"16:9", "21:9", "Full width"}},
-        {"hud_placement", "HUD placement", "Whether the HUD stays in the middle or goes to the edges of its area.", false, 0, 1,
-         0, "", 1, true, false, {"Centre", "Edges"}},
-        {"ultrawide_fov", "Ultrawide view", "Whether the view keeps widening on a window wider than 16:9 or 21:9.", false, 0, 2,
-         0, "", 1, true, false, {"Widest", "Up to 21:9", "Up to 16:9"}},
+        {"hud_placement", "HUD placement", "Where the HUD sits inside that area.", false, 0, 1, 0, "", 1, true, false,
+         {"Centre", "Edges"}},
+        {"ultrawide_fov", "Ultrawide field of view", "How far the view may widen on a window wider than 16:9.", false, 0,
+         2, 0, "", 1, true, false, {"No limit", "Up to 21:9", "Up to 16:9"}},
         {"field_of_view", "Field of view", "How wide the camera sees; the game's is 52 degrees.", false, 40, 90, 52,
          "%d degrees", 2},
         {"camera_distance", "Camera distance", "How far the camera stays from the party; 100% is the game's.", false,
@@ -646,6 +646,18 @@ std::unique_ptr<dq8::ui::Overlay> createMenu(PS2Runtime &runtime, dq8::gfx::SdlG
          "With Widescreen on, the full-screen menus (the main menu with items, equipment, status and Settings; "
          "save and transporter menus; factory, insect and ship menus), which the game draws for 4:3, are shown at "
          "4:3 with Display > Borders around them. Stretched shows them as wide as the window, as before."},
+        {"hud_area",
+         "On a window wider than 16:9, the HUD (the message windows, prompts, minimap, compass and battle gauges) is "
+         "drawn in a box of this shape in the middle: 16:9 as the game was made for, 21:9, or the whole width. The "
+         "picture behind it always fills the window. Nothing changes at 16:9 or narrower."},
+        {"hud_placement",
+         "Centre keeps the HUD as one block in the middle of its area. Edges keeps the HUD's left and right parts "
+         "(the compass, the minimap, the battle gauges) at the sides of the screen and the messages and prompts "
+         "in the middle."},
+        {"ultrawide_fov",
+         "No limit lets the view widen with the window, so 32:9 shows a very wide scene. Up to 21:9 or 16:9 stops "
+         "the sideways angle there and shows a little less above and below instead; 16:9 is how the game looks on "
+         "a 16:9 window."},
         {"field_of_view",
          "How wide the camera sees while exploring and in battle, in degrees across a 4:3 picture (the game's is "
          "52); a wide picture adds to it. Scenes keep their own camera."},

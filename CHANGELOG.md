@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Ultrawide (21:9, 32:9): the HUD no longer stretches with the window. With Widescreen on and a window wider than 16:9,
+  the message windows, prompts, captions, the minimap, the compass, the battle gauges and the pause text are drawn in a box
+  in the middle of the picture with the proportions they have at 16:9; the picture behind them still fills the window.
+  Game > **HUD area** (16:9 by default, 21:9, Full width) sets how wide that box is, **HUD placement** (Centre, Edges) keeps
+  the compass, the minimap and the battle gauges at the sides of the screen, and **Ultrawide field of view** (No limit, Up to
+  21:9, Up to 16:9) stops the view widening past a shape, showing less above and below instead. At 16:9 and narrower nothing
+  changes. New settings.ini keys `hud_area`, `hud_placement`, `ultrawide_fov`. How it works and what was checked:
+  docs/ULTRAWIDE.md. Not done: the 2D is still drawn at the game's 512 columns, so at 32:9 it is soft sideways (a window
+  resolution HUD layer would fix that; see the doc), and the cutscene letterbox and the bloom are as they were.
+
 - F1 > Controls shows your controller: a drawn PlayStation (DualShock 4,
   DualSense) or Xbox (One, Series) pad instead of the old generic one, the one
   connected, PlayStation when none is, or the one **Controller shown** picks

@@ -19,7 +19,7 @@ disc image; nothing of the game is distributed.
 </p>
 
 - 60 fps, or the original 30
-- Widescreen, up to 32:9, with the menus kept at 4:3
+- Widescreen, up to 32:9, with the menus kept at 4:3 and the HUD kept in a 16:9, 21:9 or full-width area that does not stretch ([docs/ULTRAWIDE.md](docs/ULTRAWIDE.md))
 - Up to 8x internal resolution (or Auto, from the window's height), with
   FSR or a supersampled downscale
   ([GRAPHICS-UPSCALING.md](docs/GRAPHICS-UPSCALING.md); ReShade can be let in)

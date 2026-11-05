@@ -84,8 +84,11 @@ free camera keeps them either way.
 | Option | |
 |---|---|
 | 60 frames per second | On by default; off, the game's own 30. From the next start. |
-| Widescreen | A wider view that fills the window, from 4:3 to 32:9. Text over the field comes out stretched. |
+| Widescreen | A wider view that fills the window, from 4:3 to 32:9. On a window wider than 16:9 the HUD stays in a box of the HUD area below ([ULTRAWIDE.md](ULTRAWIDE.md)). |
 | Widescreen menus | 4:3 pillarboxed (default): the full-screen menus (main menu, items, equipment, status, Settings, save and transporter menus, factory, insect and ship menus) are shown at 4:3 with Display > Borders beside them. Stretched: as wide as the window, as before. |
+| HUD area | 16:9 (default), 21:9 or Full width: how wide the HUD (message windows, prompts, minimap, compass, battle gauges) spreads on a window wider than 16:9. Nothing changes at 16:9 or narrower. |
+| HUD placement | Centre (default): the HUD is one block in the middle of its area. Edges: its left and right parts (the compass, the minimap, the battle gauges) keep to the sides of the screen. |
+| Ultrawide field of view | No limit (default), Up to 21:9 or Up to 16:9: whether the view keeps widening on a window wider than that. A cap stops the sideways angle and shows a little less above and below instead. |
 | Field of view | 40 to 90 degrees (the game's is 52). |
 | Camera distance | 70% to 160% of the game's. |
 | Faster camera rotation | The camera turns twice as fast. |

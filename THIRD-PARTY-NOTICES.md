@@ -83,6 +83,17 @@ SHA-256 and licence are in `tools/setup/rgsetup/download.py`; a file whose SHA-2
 |---|---|---|
 | **chdman** from the **MAME** 0.289 Windows release (`mame0289b_x64.exe`, 87,626,249 bytes, SHA-256 `a1aa7912168c9d1b05e611906bc21b8b9be3935822aead36d12a1da363150b7d`), from <https://github.com/mamedev/mame/releases/tag/mame0289> | chdman: BSD-3-Clause (the header of `src/tools/chdman.cpp`, "license:BSD-3-Clause", Aaron Giles). MAME as a whole: GPL-2.0-or-later (and others per file) | The setup reads the self-extracting archive with the Windows `tar` without running it, keeps `chdman.exe` and `COPYING` in `toolchain/chdman`, and runs chdman as a separate program to turn a CHD into an ISO. It is not linked into the game and is not redistributed here. |
 
+## Ideas credited, no code taken
+
+The ultrawide HUD (`src/ultrawide.cpp`, [docs/ULTRAWIDE.md](docs/ULTRAWIDE.md)) is written for this game's own code. Its ideas
+come from projects that solved the same problem for other games; **no code, no data and no file of theirs is in this
+repository**, so none of their licences apply to it. They were read on their public pages (2026-11-04) and are named here because the
+approach is theirs first: **gta-vcs-recomp** (GPL-3.0: a HUD squeezed toward an anchor after snapping to the console's pixels, the
+scissor squeezed the same way), **KillzoneRecomp** (GPL-3.0: the 2D drawn into a centred 16:9 box, full-width rectangles kept
+whole, a field of view in tangent space), **GT4Recomp** (MIT: a 16:9 HUD block, menus and movies kept 4:3, nothing written at
+16:9 so the picture is byte-identical), **takedawn** (MIT: a per-frame wide flag, left and right parts anchored to the visible
+edge), and **Zelda64Recomp** with **RT64** (GPL-3.0, MIT: a left, centre or right origin for each piece of the HUD).
+
 ## Modified code and how to get the source
 
 The changes to the vendored and patched projects are in this repository:
