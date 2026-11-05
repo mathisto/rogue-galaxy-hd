@@ -59,7 +59,31 @@ With a wide window the game's own wide mode narrows the HUD sprites by 3/4, righ
 
 ## What was checked
 
-See the end of this file (filled in with the run).
+Hidden window, scratch settings (Display > Aspect ratio Auto, internal scale 2), a copy of the memory card (File 01, chapter 2,
+Juraika: Path to Burkaqua, the party at the first transporter), a Cross script. Screenshots, looked at one by one, are in
+`research/assets/ultrawide/` of the project's notes (`before_` is the branch's previous build, `after_` this one; `a16`, `a21`,
+`full` the HUD area, `edges` the placement).
+
+| Scene | 1280x960 (4:3) | 1920x1080 | 2560x1080 (21:9) | 5120x1440 (32:9) |
+|---|---|---|---|---|
+| Title | 4:3, as before | 4:3 between the Borders fill | same | same (checked) |
+| Field: compass, minimap, prompt | unchanged | identical (below) | HUD area 16:9, 21:9, Full, and Edges: right | 16:9, 21:9, Full, Edges: right |
+| Main menu | unchanged | unchanged | 4:3 between the Borders | 4:3 between the Borders (checked) |
+| Pause | unchanged | identical (below) | text in the 16:9 box | same |
+| Battle HUD (gauges, party panel, radar, names) | not captured | not captured | right, 16:9 area | right, 16:9 area |
+| Results screen after a battle | | | stretched (gap) | stretched (gap) |
+| Field of view cap | | | | Up to 21:9, Up to 16:9: the horizontal angle held, less above and below |
+| Settings menu rows | `rowcheck`: 27 rows on the Game page, 0 overlapping, at 1280x720 (not run at other sizes) | | | |
+
+**16:9 identity.** Two runs of the old build never match pixel for pixel (the scene animates: 42% of the field frame differs
+between two runs of the same exe), so a screenshot diff of a live scene proves nothing. The pause frame is frozen: the old
+build's second run and the new build's first run, at 1920x1080, have **0 differing pixels** in the whole frame (compass, minimap,
+dimming and the PAUSE text included); the other pairs froze the scene at another moment. The code path agrees: below 16:9 every
+hook calls the game's own function unchanged.
+
+Not reached: a cutscene event (letterbox and captions; this save reaches none; the New Game prologue does, but it was not run),
+the battle at 1920x1080 and 4:3, other HUD areas in battle, a window narrower than 4:3, a controller. The player's real
+5120x1440 monitor is the final judge.
 
 ## Known gaps
 
@@ -71,6 +95,12 @@ See the end of this file (filled in with the run).
   through the message path, so they sit in the 16:9 box.
 - The bloom and focus-blur kernels work in frame pixels and are 2.67 times as wide on screen as tall at 32:9: a softer,
   sideways glow. Not changed.
+- The pause screen's dimming has a thin dark seam at the edges of the HUD box (the sprites that dim the scene are not
+  exactly the frame wide, so they were mapped; the dimming itself is not touched).
+- The results screen after a battle (Exp, Skills, Acquired Items) is drawn by a task that is not in the table of HUD tasks, so it is as
+  stretched as it was. Likewise anything not listed in `g_classes`.
+- The minimap's map is built in strips written into the picture; those strips are skipped by their call sites (`kScratchSites`).
+  Another element built the same way would show as a missing or shifted piece.
 - Two HUD tasks of the battle (the damage popups and the target marks) were judged world-anchored from their origin and not
   mapped; a few elements that follow the picture may still be missing from the table. A missing task shows up as a piece of
   the HUD left at its 16:9 position over the wide picture.

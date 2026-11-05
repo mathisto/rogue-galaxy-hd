@@ -75,6 +75,8 @@ constexpr uint32_t kRamMask = 0x1FFFFFFFu;
 constexpr float kFrameWidth = 512.0f;
 // A sprite from within this of both edges of the frame covers the screen.
 constexpr float kWholeMargin = 2.0f;
+// A sprite this much of the frame wide is a backdrop (a dimming, a band behind an emblem), not a part of a picture.
+constexpr float kBackdropWidth = 0.9f * 512.0f;
 constexpr float kFrameHalf = 256.0f;
 constexpr float kSixteenNine = 16.0f / 9.0f;
 constexpr float kTwentyOneNine = 21.0f / 9.0f;
@@ -508,7 +510,7 @@ void flushBatch(uint8_t *rdram)
     std::vector<BatchSpan> parts;
     for (const BatchSpan &span : spans)
     {
-        if (span.x0 <= kWholeMargin && span.x1 >= kFrameWidth - kWholeMargin)
+        if ((span.x0 <= kWholeMargin && span.x1 >= kFrameWidth - kWholeMargin) || span.x1 - span.x0 >= kBackdropWidth)
         {
             for (size_t v = span.first; v <= span.last; ++v)
             {
