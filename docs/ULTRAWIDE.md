@@ -77,4 +77,35 @@ See the end of this file (filled in with the run).
 
 ## Window-resolution HUD layer: what it would take
 
-(Report only; not built.)
+(A feasibility look only; nothing of it is built.) The question: could the HUD be drawn in a layer at the window's resolution
+instead of into the game's 512x448 frame (as gta-vcs-recomp does), so text and gauges are sharp at 32:9 whatever the internal
+resolution? Yes, it can be done, and the placement work here is its first half: the game thread already knows, per vertex,
+that a draw is screen-anchored HUD (the task scope), and the groups and the 16:9 proportions are what the layer would draw.
+What it needs:
+
+1. **A tag that crosses the thread boundary.** The GS thread sees only the packets. A marker written into the packet at the
+   start and the end of a HUD task (an A+D write to a register the GS does not use, say 0x7F with a value) tells the renderer
+   which draws belong to the layer. About 2 hours.
+2. **A second set of render targets** in `sdlgpu_targets.cpp`: an RGBA surface at the window's size, cleared to transparent at
+   the start of a frame, that HUD draws go to instead of the picture's colour target, with the vertex transform of those draws
+   scaled to it (the game's x, y in frame pixels over 512 and 448). The target cache is built around one `m_scale` for every
+   surface (about 300 uses), so a layer with its own size is a new kind of surface. 4 to 6 hours.
+3. **Blending that accumulates.** Drawing alpha-blended sprites onto a transparent target and compositing it later is not what
+   the GS did (it blended into the opaque picture). Ordinary blends (source alpha) are right in a premultiplied layer; additive
+   and subtractive blends, draws that test or write destination alpha, and draws that read the frame (the shader's own blend
+   path, `feedback`) are not, and the HUD has some (glows, the pause dimming, the minimap's translucent panel). Each needs a
+   decision: into the layer with a matching blend, or into the picture as now. 4 to 6 hours.
+4. **The present step** draws the layer over the picture (before the menu overlay), in the picture's rectangle, through the
+   same scaling and FSR choice, and into a capture. 2 hours.
+5. **What reads the frame after the HUD is drawn.** The game's blur, focus and glare passes and its pause filter copy the
+   frame buffer. If any run after a HUD draw, the HUD must be in the picture at that moment, or the layer must be composited
+   first. Whether Rogue Galaxy draws its HUD before or after those reads was not checked (the HUD tasks come late in the table,
+   which suggests after, and the pause screen would then dim the layer too). 2 to 4 hours of looking and a rule.
+6. **Texture replacement at the layer's scale.** Replacement fonts and prompts are drawn at the internal resolution through
+   `misc.y`; at the window's they sample the same textures, so that works, but the sprite clamp and the texel-per-pixel path
+   need a pass. 2 hours.
+7. **Tests** at six window sizes and three areas, the menus and the pause among them. 3 hours.
+
+About **20 to 27 hours of working time**, three working days at the pace of this branch (builds are a minute; the runs
+are three minutes each, four at a time). The risk is in 3 and 5. A cheaper step that gets part of the sharpness is a per-surface
+x and y scale (the spike's F3), which costs more and sharpens the world as well.

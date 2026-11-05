@@ -52,6 +52,10 @@ constexpr uint32_t kPauseFunctions[] = {0x002F5C40u};
 // tasks: the names over characters and enemies and the markers (ScreenMarkerDrawAll),
 // the damage numbers, the door cursors. What they draw keeps the x the scene gives it.
 constexpr uint32_t kWorldFunctions[] = {0x0031AF50u, 0x002D2EA0u, 0x002E7E10u, 0x00304AA0u};
+// Where the minimap's tiles are written (MinimapDraw's 16x16 strips): not onto the screen
+// where they end up but onto a part of the picture the game uses to build the map, which a
+// polygon then reads from by its position. Moved, they would be read from the wrong place.
+constexpr uint32_t kScratchSites[] = {0x0032909Cu, 0x003290D0u};
 constexpr uint32_t kViewSetScreenMatrix = 0x001562B0u;
 constexpr uint32_t kCompassStart = 0x00370FB0u;
 constexpr uint32_t kCompassEnd = 0x00371470u;
@@ -113,6 +117,10 @@ uint32_t g_world = 0u;
 // frame's: what a picture is clipped to says what it belongs to.
 float g_clip0 = 0.0f;
 float g_clip1 = 0.0f;
+// Where that scissor sits in its packet, and whether it has been placed (a scissor written before the
+// HUD draw that uses it is placed when that draw begins).
+uint32_t g_clipQuad = 0u;
+bool g_clipPlaced = true;
 bool g_trace = false;
 int g_debugMode = 0; // RG_UW_MODE: 1 no sprite pairs, 2 modify the arguments and call the original
 
@@ -328,6 +336,10 @@ void taskTableDone(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime, uint3
     {
         flushBatch(rdram);
         g_world = 0u;
+        // The scissor written in this frame's packets is the frame's: the next frame writes its own.
+        g_clipQuad = 0u;
+        g_clipPlaced = true;
+        g_clip0 = g_clip1 = 0.0f;
     }
 }
 
@@ -340,7 +352,10 @@ void taskTableRun(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
         // What an earlier run left unplaced is not placed: its packets are the game's again.
         dropBatch();
         g_world = 0u;
-        g_clip0 = g_clip1 = 0.0f;
+    }
+    if (g_tableDepth > 8u)
+    {
+        g_tableDepth = 0u; // a run that never reported its end
     }
     ++g_tableDepth;
     rg::hooks::callThen(g_taskTableRun, rdram, ctx, runtime, &taskTableDone, g_task);
@@ -503,10 +518,33 @@ void flushBatch(uint8_t *rdram)
         else
         {
             parts.push_back(span);
+            if (g_trace && (span.y1 > 440.0f || span.y0 < 0.0f))
+            {
+                static std::map<std::pair<uint32_t, uint32_t>, int> seen;
+                if (seen[{g_task, span.site}]++ == 0)
+                {
+                    std::fprintf(stderr, "[uw] span off the picture task=%08X site=%08X x=%.1f..%.1f y=%.1f..%.1f\n", g_task,
+                                 span.site, span.x0, span.x1, span.y0, span.y1);
+                }
+            }
             if (g_trace && span.x1 - span.x0 >= 200.0f)
             {
                 std::fprintf(stderr, "[uw] wide span task=%08X site=%08X x=%.1f..%.1f y=%.1f..%.1f\n", g_task, span.site, span.x0,
                              span.x1, span.y0, span.y1);
+            }
+        }
+    }
+    if (g_trace)
+    {
+        static int flushes = 0;
+        if (++flushes % 400 == 0)
+        {
+            std::fprintf(stderr, "[uw] ---- flush %d, %zu spans, class %d\n", flushes, parts.size(), static_cast<int>(cls));
+            for (size_t i = 0; i < parts.size() && i < 70u; ++i)
+            {
+                const BatchSpan &sp = parts[i];
+                std::fprintf(stderr, "[uw]   site %08X x %.1f..%.1f y %.1f..%.1f clip %.0f..%.0f -> %.1f\n", sp.site, sp.x0, sp.x1,
+                             sp.y0, sp.y1, sp.clip0, sp.clip1, affine(sp.x0, cls));
             }
         }
     }
@@ -663,9 +701,50 @@ void emit(uint8_t *rdram, uint32_t packet, float x, int32_t y16, int32_t z, Cls 
         flushBatch(rdram);
     }
     g_batchClass = cls;
+    if (!g_clipPlaced && g_clipQuad != 0u && g_clip1 > g_clip0)
+    {
+        float first, second;
+        mapSpan(g_clip0, g_clip1, cls, first, second);
+        const int32_t left = static_cast<int32_t>(std::floor(first + 0.001f));
+        const int32_t right = static_cast<int32_t>(std::ceil(second - 0.001f)) - 1;
+        const uint64_t data = read<uint64_t>(rdram, g_clipQuad);
+        write<uint64_t>(rdram, g_clipQuad,
+                        (data & ~0xFFFFFFFFull) | static_cast<uint64_t>(left & 0xFFFF) |
+                            (static_cast<uint64_t>(right & 0xFFFF) << 16));
+        g_clipPlaced = true;
+    }
     const bool sprite = (read<uint8_t>(rdram, packet + kPacketPrim) & 7u) == kPrimSprite;
     const float y = static_cast<float>(y16) / 16.0f;
+    for (const uint32_t scratch : kScratchSites)
+    {
+        if (site == scratch)
+        {
+            // Written as the game would write it.
+            const int32_t plain = static_cast<int32_t>(std::lround(x * 16.0f)) + originX;
+            const int64_t value = (static_cast<int64_t>(z) << 32) | static_cast<int64_t>(plain) |
+                                  (static_cast<int64_t>(y16 + originY) << 16);
+            write<int64_t>(rdram, pointer, value);
+            write<int64_t>(rdram, pointer + 8u, kRegisterXyz2);
+            write<uint32_t>(rdram, packet + kPacketWrite, pointer + 0x10u);
+            return;
+        }
+    }
     const size_t index = g_batch.size();
+    if (g_trace)
+    {
+        static std::map<uint32_t, uint32_t> owners;
+        if (index == 0u)
+        {
+            owners.clear();
+        }
+        const auto found = owners.find(pointer);
+        if (found != owners.end())
+        {
+            std::fprintf(stderr, "[uw] quad %08X written twice, sites %08X and %08X, task %08X\n", pointer, found->second,
+                         site, g_task);
+        }
+        owners[pointer] = site;
+    }
     g_batch.push_back({pointer, originX, x});
     if (sprite)
     {
@@ -902,6 +981,8 @@ void writeAd(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
         const bool whole = x0 <= kWholeMargin && x1 + 1 >= kFrameWidth - kWholeMargin;
         g_clip0 = whole ? 0.0f : static_cast<float>(x0);
         g_clip1 = whole ? 0.0f : static_cast<float>(x1 + 1);
+        g_clipQuad = read<uint32_t>(rdram, getRegU32(ctx, 4) + kPacketWrite);
+        g_clipPlaced = whole;
         if (g_task != 0u)
         {
             if (g_trace)
@@ -918,6 +999,7 @@ void writeAd(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
                 value = (value & ~0xFFFFFFFFull) | static_cast<uint64_t>(left & 0xFFFF) |
                         (static_cast<uint64_t>(right & 0xFFFF) << 16);
                 ctx->r[6] = _mm_set_epi64x(0, static_cast<int64_t>(value));
+                g_clipPlaced = true;
             }
         }
     }
@@ -992,7 +1074,11 @@ template <size_t... Index>
 bool installWorld(PS2Runtime &runtime, std::index_sequence<Index...>)
 {
     bool complete = true;
-    ((complete &= rg::timing::hookFunction(runtime, kWorldFunctions[Index], &worldEntry<Index>, g_worldFunctions[Index])), ...);
+    const char *mask = std::getenv("RG_UW_WORLD");
+    const unsigned enabled = mask ? static_cast<unsigned>(std::strtoul(mask, nullptr, 0)) : 0xFFu;
+    ((complete &= (enabled & (1u << Index)) == 0u ||
+                  rg::timing::hookFunction(runtime, kWorldFunctions[Index], &worldEntry<Index>, g_worldFunctions[Index])),
+     ...);
     return complete;
 }
 
