@@ -1,4 +1,4 @@
-# Rogue Galaxy Recompiled
+# Rogue Galaxy HD
 
 **Rogue Galaxy** (Level-5 / SCE, PlayStation 2) as a native Windows game: a
 static recompilation of the USA release (SCUS-97490), built on
@@ -13,10 +13,22 @@ disc image; nothing of the game is distributed.
 > made from it (the extracted disc, the HD textures, the HD movies) stays on
 > your PC; see [docs/SHARING.md](docs/SHARING.md).
 
-<p align="center">
-  <img src="docs/images/salgin-plaza.jpg" width="49%" alt="Salgin in widescreen">
-  <img src="docs/images/battle.jpg" width="49%" alt="A battle in Salgin">
-</p>
+<p align="center"><img src="docs/images/ultrawide-32x9.jpg" alt="Rogue Galaxy at 32:9 ultrawide"></p>
+
+<table>
+  <tr>
+    <th align="center">Original (PS2)</th>
+    <th align="center">Rogue Galaxy HD</th>
+  </tr>
+  <tr>
+    <td><img src="docs/images/compare-field-original.jpg" alt="A jungle field, original PS2 quality"></td>
+    <td><img src="docs/images/compare-field-hd.jpg" alt="The same field with HD textures and sharper rendering"></td>
+  </tr>
+  <tr>
+    <td><img src="docs/images/compare-cutscene-original.jpg" alt="A cutscene, original video"></td>
+    <td><img src="docs/images/compare-cutscene-hd.jpg" alt="The same cutscene as a 1080p upscale"></td>
+  </tr>
+</table>
 
 - 60 fps, or the original 30
 - Widescreen, up to 32:9, with the menus kept at 4:3 and the HUD kept in a 16:9, 21:9 or full-width area that does not stretch ([docs/ULTRAWIDE.md](docs/ULTRAWIDE.md))
